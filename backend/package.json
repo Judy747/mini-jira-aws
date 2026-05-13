@@ -1,21 +1,29 @@
 {
-  "name": "backend",
+  "name": "mini-jira-aws-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Express REST API for Mini Jira AWS (DynamoDB, Cognito, S3)",
+  "main": "src/server.js",
+  "type": "commonjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "cors": "^2.8.6",
-    "dotenv": "^17.4.2",
-    "express": "^5.2.1"
+    "@aws-sdk/client-cognito-identity-provider": "^3.787.0",
+    "@aws-sdk/client-dynamodb": "^3.787.0",
+    "@aws-sdk/client-s3": "^3.787.0",
+    "@aws-sdk/lib-dynamodb": "^3.787.0",
+    "@aws-sdk/s3-request-presigner": "^3.787.0",
+    "aws-jwt-verify": "^5.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.9"
   }
 }
