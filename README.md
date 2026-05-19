@@ -58,8 +58,8 @@ The API now returns Cognito’s message in the JSON body (not only “Internal s
 | Area | Methods |
 |------|---------|
 | Auth | `POST /auth/login`, `POST /auth/register`, `POST /auth/confirm`, `POST /auth/resend-code`, `GET /auth/me` (Bearer) |
-| Tasks | `GET /tasks`, `GET /tasks/:id`, `POST /tasks`, `PUT /tasks/:id`, `DELETE /tasks/:id` |
-| Projects | `GET /projects`, `POST /projects`, `PUT /projects/:id`, `DELETE /projects/:id` |
+| Tasks | `GET /tasks`, `GET /tasks/summary`, `GET /tasks/:id`, `POST /tasks`, `PUT /tasks/:id`, `DELETE /tasks/:id` |
+| Projects | `GET /projects`, `GET /projects/:id`, `POST /projects`, `PUT /projects/:id`, `DELETE /projects/:id` |
 | Comments | `GET /comments/:taskId`, `POST /comments` |
 | Directory | `GET /users` (manager/admin), `GET /teams`, `POST /teams` (admin), `POST /users` (admin) |
 | Uploads | `POST /uploads/presign` — returns `{ uploadUrl, key, publicUrl }` |
@@ -87,7 +87,7 @@ All routes except `/auth/*` and `/health` require a valid **Cognito ID token** (
 | Attribute | Type | Key |
 |-----------|------|-----|
 | `projectId` | String | **PK** |
-| `name`, `description`, `teamId`, `ownerId`, `createdAt` | String | — |
+| `name`, `description`, `teamId`, `createdBy`, `createdAt` | String | — |
 
 **GSI `TeamProjectsIndex`:** PK = `teamId`, SK = `projectId` (projectId as range key helps uniqueness per team listing).
 
@@ -96,9 +96,13 @@ All routes except `/auth/*` and `/health` require a valid **Cognito ID token** (
 | Attribute | Type | Key |
 |-----------|------|-----|
 | `taskId` | String | **PK** |
-| `title`, `description`, `priority`, `status`, `deadline`, `assigneeId`, `teamId`, `projectId`, `imageUrl`, `createdAt`, `updatedAt` | mixed | — |
+| `title`, `description`, `priority`, `status`, `dueDate`, `assigneeId`, `teamId`, `projectId`, `createdBy`, `imageUrl`, `createdAt`, `updatedAt` | mixed | — |
 
-**GSI `TeamTasksIndex`:** PK = `teamId`, SK = `taskId` (Query all tasks in a team; optional `FilterExpression` for `projectId` / `status`).
+**Status values:** `TODO`, `IN_PROGRESS`, `IN_REVIEW`, `DONE` (legacy `To Do` / `In Progress` labels are normalized on read).
+
+**Priority values:** `LOW`, `MEDIUM`, `HIGH`.
+
+**GSI `teamId-index`:** PK = `teamId`, SK = `taskId` (Query all tasks in a team; optional `FilterExpression` for `projectId` / `status`).
 
 **GSI `AssigneeTasksIndex`:** PK = `assigneeId`, SK = `taskId` (optional “my work” views; sparse if `assigneeId` absent).
 

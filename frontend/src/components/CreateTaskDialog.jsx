@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { fetchProjects } from '@/services/projectsService'
+import { createTask } from '@/services/tasksService'
 import { api } from '@/services/api'
 import {
   Dialog,
@@ -19,22 +21,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { TASK_PRIORITIES, priorityLabel } from '@/lib/constants'
 
-const PRIORITIES = ['Low', 'Medium', 'High']
-
-/**
- * Manager workflow: create a task scoped to team + project (server validates access patterns via role).
- */
 export function CreateTaskDialog({ teams, onCreated }) {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [priority, setPriority] = useState('Medium')
-  const [deadline, setDeadline] = useState('')
+  const [priority, setPriority] = useState('MEDIUM')
+  const [dueDate, setDueDate] = useState('')
   const [assigneeId, setAssigneeId] = useState('')
   const [teamId, setTeamId] = useState('')
   const [projectId, setProjectId] = useState('')
   const [projects, setProjects] = useState([])
+  const [users, setUsers] = useState([])
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -46,7 +45,7 @@ export function CreateTaskDialog({ teams, onCreated }) {
     let cancelled = false
     ;(async () => {
       try {
-        const { data } = await api.get('/projects', { params: { teamId } })
+        const data = await fetchProjects({ teamId })
         if (!cancelled) setProjects(data)
       } catch {
         if (!cancelled) setProjects([])
@@ -57,6 +56,22 @@ export function CreateTaskDialog({ teams, onCreated }) {
     }
   }, [open, teamId])
 
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await api.get('/users')
+        if (!cancelled) setUsers(data)
+      } catch {
+        if (!cancelled) setUsers([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
   async function submit(e) {
     e.preventDefault()
     if (!teamId || !projectId) {
@@ -65,11 +80,11 @@ export function CreateTaskDialog({ teams, onCreated }) {
     }
     setBusy(true)
     try {
-      await api.post('/tasks', {
+      await createTask({
         title,
         description,
         priority,
-        deadline: deadline || null,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
         assigneeId: assigneeId || null,
         teamId,
         projectId,
@@ -78,8 +93,8 @@ export function CreateTaskDialog({ teams, onCreated }) {
       setOpen(false)
       setTitle('')
       setDescription('')
-      setPriority('Medium')
-      setDeadline('')
+      setPriority('MEDIUM')
+      setDueDate('')
       setAssigneeId('')
       setTeamId('')
       setProjectId('')
@@ -117,27 +132,34 @@ export function CreateTaskDialog({ teams, onCreated }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PRIORITIES.map((p) => (
+                  {TASK_PRIORITIES.map((p) => (
                     <SelectItem key={p} value={p}>
-                      {p}
+                      {priorityLabel(p)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="ct-deadline">Deadline</Label>
-              <Input id="ct-deadline" type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+              <Label htmlFor="ct-due">Due date</Label>
+              <Input id="ct-due" type="datetime-local" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="ct-assignee">Assignee user ID (optional)</Label>
-            <Input
-              id="ct-assignee"
-              placeholder="Cognito sub"
-              value={assigneeId}
-              onChange={(e) => setAssigneeId(e.target.value)}
-            />
+            <Label>Assignee</Label>
+            <Select value={assigneeId || '_none'} onValueChange={(v) => setAssigneeId(v === '_none' ? '' : v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Unassigned" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="_none">Unassigned</SelectItem>
+                {users.map((u) => (
+                  <SelectItem key={u.userId} value={u.userId}>
+                    {u.name || u.email}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label>Team</Label>
