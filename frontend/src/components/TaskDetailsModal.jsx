@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { api } from '@/services/api'
+import { fetchTask, updateTask } from '@/services/tasksService'
 import {
   Dialog,
   DialogContent,
@@ -13,8 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Label } from '@/components/ui/label'
-
-const STATUSES = ['To Do', 'In Progress', 'In Review', 'Done']
+import { TASK_STATUSES, statusLabel, priorityLabel } from '@/lib/constants'
 
 export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
   const [task, setTask] = useState(null)
@@ -29,12 +29,12 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
     ;(async () => {
       setLoading(true)
       try {
-        const [tRes, cRes] = await Promise.all([
-          api.get(`/tasks/${taskId}`),
+        const [t, cRes] = await Promise.all([
+          fetchTask(taskId),
           api.get(`/comments/${taskId}`),
         ])
         if (!cancelled) {
-          setTask(tRes.data)
+          setTask(t)
           setComments(cRes.data)
         }
       } catch (e) {
@@ -75,12 +75,12 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
         body: file,
       })
-      const { data: updated } = await api.put(`/tasks/${taskId}`, { imageUrl: presign.publicUrl })
+      const updated = await updateTask(taskId, { imageUrl: presign.publicUrl })
       setTask(updated)
       toast.success('Attachment saved')
       onUpdated?.()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Upload failed (check S3 CORS and bucket policy)')
+      toast.error(err.response?.data?.message || 'Upload failed')
     } finally {
       setUploading(false)
       e.target.value = ''
@@ -88,10 +88,9 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
   }
 
   async function changeStatus(status) {
-    if (!STATUSES.includes(status)) return
     try {
-      const { data } = await api.put(`/tasks/${taskId}`, { status })
-      setTask(data)
+      const updated = await updateTask(taskId, { status })
+      setTask(updated)
       toast.success('Status updated')
       onUpdated?.()
     } catch (e) {
@@ -110,19 +109,18 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
           <div className="space-y-3 py-2">
             <Skeleton className="h-6 w-2/3" />
             <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-10 w-full" />
           </div>
         ) : (
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
-              <Badge>{task.priority || 'Medium'}</Badge>
-              <Badge variant="secondary">{task.status}</Badge>
+              <Badge>{priorityLabel(task.priority)}</Badge>
+              <Badge variant="secondary">{statusLabel(task.status)}</Badge>
             </div>
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{task.description}</p>
+            <p className="whitespace-pre-wrap text-sm text-muted-foreground">{task.description}</p>
             <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
               <div>
-                <span className="font-medium text-foreground">Deadline</span>
-                <div>{task.deadline ? new Date(task.deadline).toLocaleString() : '—'}</div>
+                <span className="font-medium text-foreground">Due date</span>
+                <div>{task.dueDate ? new Date(task.dueDate).toLocaleString() : '—'}</div>
               </div>
               <div>
                 <span className="font-medium text-foreground">Team</span>
@@ -137,22 +135,15 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
                 <div className="font-mono">{task.assigneeId || '—'}</div>
               </div>
             </div>
-            {task.imageUrl ? (
-              <a
-                href={task.imageUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm text-primary hover:underline"
-              >
+            {task.imageUrl && (
+              <a href={task.imageUrl} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline">
                 View attachment
               </a>
-            ) : (
-              <p className="text-xs text-muted-foreground">No attachment yet.</p>
             )}
             <div className="space-y-2">
               <Label className="text-foreground">Status</Label>
               <div className="flex flex-wrap gap-2">
-                {STATUSES.map((s) => (
+                {TASK_STATUSES.map((s) => (
                   <Button
                     key={s}
                     type="button"
@@ -160,7 +151,7 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
                     variant={task.status === s ? 'default' : 'outline'}
                     onClick={() => changeStatus(s)}
                   >
-                    {s}
+                    {statusLabel(s)}
                   </Button>
                 ))}
               </div>
@@ -168,7 +159,6 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
             <div className="space-y-2">
               <Label htmlFor="attach">Image attachment</Label>
               <input id="attach" type="file" accept="image/*" onChange={onPickFile} disabled={uploading} />
-              {uploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
             </div>
             <div className="space-y-2 border-t border-border pt-4">
               <Label>Comments</Label>
