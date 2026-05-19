@@ -1,52 +1,40 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd'
 import { toast } from 'sonner'
-import { api } from '@/services/api'
+import { Calendar, GripVertical, User } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { TeamFilter } from '@/components/TeamFilter'
 import { TaskDetailsModal } from '@/components/TaskDetailsModal'
 import { useTeams } from '@/hooks/useTeams'
+import { useTasks } from '@/hooks/useTasks'
+import { useUsers } from '@/hooks/useUsers'
+import { updateTask } from '@/services/tasksService'
+import {
+  KANBAN_COLUMNS,
+  statusLabel,
+  priorityLabel,
+  priorityVariant,
+} from '@/lib/constants'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { GripVertical } from 'lucide-react'
 
-const COLUMNS = ['To Do', 'In Progress', 'In Review', 'Done']
-
-/**
- * Kanban board using @hello-pangea/dnd (maintained fork of react-beautiful-dnd, React 18+ compatible).
- */
 export function KanbanPage() {
   const { isManager } = useAuth()
   const { teams } = useTeams()
+  const { displayName } = useUsers()
   const [teamFilter, setTeamFilter] = useState('')
-  const [tasks, setTasks] = useState([])
-  const [loading, setLoading] = useState(true)
   const [modalId, setModalId] = useState(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = {}
-      if (isManager && teamFilter) params.teamId = teamFilter
-      const { data } = await api.get('/tasks', { params })
-      setTasks(data)
-    } catch (e) {
-      toast.error(e.response?.data?.message || 'Failed to load board')
-    } finally {
-      setLoading(false)
-    }
-  }, [isManager, teamFilter])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const { tasks, setTasks, loading, reload } = useTasks({
+    teamId: isManager && teamFilter ? teamFilter : undefined,
+  })
 
   const grouped = useMemo(() => {
-    const g = Object.fromEntries(COLUMNS.map((c) => [c, []]))
+    const g = Object.fromEntries(KANBAN_COLUMNS.map((c) => [c, []]))
     for (const t of tasks) {
-      if (g[t.status]) g[t.status].push(t)
-      else g['To Do'].push(t)
+      const col = KANBAN_COLUMNS.includes(t.status) ? t.status : 'TODO'
+      g[col].push(t)
     }
     return g
   }, [tasks])
@@ -61,8 +49,9 @@ export function KanbanPage() {
       list.map((t) => (t.taskId === draggableId ? { ...t, status: nextStatus } : t))
     )
     try {
-      await api.put(`/tasks/${draggableId}`, { status: nextStatus })
+      await updateTask(draggableId, { status: nextStatus })
       toast.success('Task moved')
+      reload()
     } catch (e) {
       setTasks(prev)
       toast.error(e.response?.data?.message || 'Could not update status')
@@ -74,24 +63,25 @@ export function KanbanPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Kanban</h1>
-          <p className="text-muted-foreground">Drag cards across columns. Updates persist via the REST API.</p>
+          <p className="text-muted-foreground">Drag cards between columns — changes persist to DynamoDB.</p>
         </div>
         <TeamFilter teams={teams} value={teamFilter} onChange={setTeamFilter} disabled={loading} />
       </div>
 
       {loading ? (
         <div className="grid gap-4 lg:grid-cols-4">
-          {COLUMNS.map((c) => (
+          {KANBAN_COLUMNS.map((c) => (
             <Skeleton key={c} className="h-64" />
           ))}
         </div>
       ) : (
         <DragDropContext onDragEnd={onDragEnd}>
-          <div className="grid gap-4 lg:grid-cols-4">
-            {COLUMNS.map((col) => (
+          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+            {KANBAN_COLUMNS.map((col) => (
               <Card key={col} className="bg-card/60">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-semibold">{col}</CardTitle>
+                  <CardTitle className="text-sm font-semibold">{statusLabel(col)}</CardTitle>
+                  <p className="text-xs text-muted-foreground">{grouped[col].length} tasks</p>
                 </CardHeader>
                 <CardContent className="pt-0">
                   <Droppable droppableId={col}>
@@ -99,12 +89,14 @@ export function KanbanPage() {
                       <div
                         ref={provided.innerRef}
                         {...provided.droppableProps}
-                        className={`min-h-[200px] space-y-2 rounded-lg border border-dashed p-2 transition-colors ${
-                          snapshot.isDraggingOver ? 'border-primary/60 bg-primary/5' : 'border-border/60'
+                        className={`min-h-[220px] space-y-2 rounded-lg border border-dashed p-2 transition-all duration-200 ${
+                          snapshot.isDraggingOver
+                            ? 'border-primary/60 bg-primary/5 scale-[1.01]'
+                            : 'border-border/60'
                         }`}
                       >
                         {grouped[col].length === 0 ? (
-                          <p className="py-6 text-center text-xs text-muted-foreground">No tasks</p>
+                          <p className="py-8 text-center text-xs text-muted-foreground">Drop tasks here</p>
                         ) : (
                           grouped[col].map((task, index) => (
                             <Draggable key={task.taskId} draggableId={task.taskId} index={index}>
@@ -112,15 +104,17 @@ export function KanbanPage() {
                                 <div
                                   ref={dragProvided.innerRef}
                                   {...dragProvided.draggableProps}
-                                  className={`rounded-lg border bg-background p-3 text-sm shadow-sm ${
-                                    dragSnapshot.isDragging ? 'border-primary ring-2 ring-primary/30' : 'border-border'
+                                  className={`rounded-lg border bg-background p-3 text-sm shadow-sm transition-shadow ${
+                                    dragSnapshot.isDragging
+                                      ? 'border-primary ring-2 ring-primary/30 shadow-lg'
+                                      : 'border-border'
                                   }`}
                                 >
                                   <div className="flex items-start gap-2">
                                     <button
                                       type="button"
-                                      className="mt-0.5 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                                      aria-label="Drag task"
+                                      className="mt-0.5 rounded p-1 text-muted-foreground hover:bg-muted"
+                                      aria-label="Drag"
                                       {...dragProvided.dragHandleProps}
                                     >
                                       <GripVertical className="h-4 w-4" />
@@ -132,13 +126,22 @@ export function KanbanPage() {
                                     >
                                       <div className="flex items-start justify-between gap-2">
                                         <p className="font-medium leading-snug">{task.title}</p>
-                                        <Badge variant="outline" className="shrink-0 text-[10px]">
-                                          {task.priority}
+                                        <Badge variant={priorityVariant(task.priority)} className="shrink-0 text-[10px]">
+                                          {priorityLabel(task.priority)}
                                         </Badge>
                                       </div>
-                                      {isManager && (
-                                        <p className="mt-1 font-mono text-[10px] text-muted-foreground">{task.teamId}</p>
-                                      )}
+                                      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+                                        <span className="inline-flex items-center gap-1">
+                                          <User className="h-3 w-3" />
+                                          {displayName(task.assigneeId)}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1">
+                                          <Calendar className="h-3 w-3" />
+                                          {task.dueDate
+                                            ? new Date(task.dueDate).toLocaleDateString()
+                                            : 'No due date'}
+                                        </span>
+                                      </div>
                                     </button>
                                   </div>
                                 </div>
@@ -161,7 +164,7 @@ export function KanbanPage() {
         taskId={modalId}
         open={!!modalId}
         onOpenChange={(o) => !o && setModalId(null)}
-        onUpdated={load}
+        onUpdated={reload}
       />
     </div>
   )

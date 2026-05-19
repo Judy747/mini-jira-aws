@@ -1,5 +1,4 @@
 const taskService = require('../services/taskService');
-const { AppError } = require('../utils/errors');
 
 async function list(req, res, next) {
   try {
@@ -11,6 +10,15 @@ async function list(req, res, next) {
     });
     tasks.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
     res.json(tasks);
+  } catch (e) {
+    next(e);
+  }
+}
+
+async function summary(req, res, next) {
+  try {
+    const data = await taskService.getTaskSummary(req.auth.profile, req.query);
+    res.json(data);
   } catch (e) {
     next(e);
   }
@@ -52,4 +60,4 @@ async function remove(req, res, next) {
   }
 }
 
-module.exports = { list, getOne, create, update, remove };
+module.exports = { list, summary, getOne, create, update, remove };
