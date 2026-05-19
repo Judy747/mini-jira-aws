@@ -8,6 +8,8 @@ Cloud task management (Jira/Trello-style) with a **React + Vite** frontend, **Ex
 |------|-------------|
 | `frontend/` | React app (Tailwind, shadcn-style UI, React Router, Axios, drag-and-drop Kanban) |
 | `backend/` | Express REST API, Cognito JWT verification, DynamoDB repositories, S3 presign |
+| `infra/` | CloudFormation template, EC2 user-data, and frontend S3+CloudFront deploy scripts |
+| `DEPLOY.md` | Operator runbook for the AWS hosting stack (VPC, ALB, ASG, CloudFront) |
 
 ## Quick start (local)
 
