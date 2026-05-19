@@ -1,35 +1,40 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { api } from '@/services/api'
 import { useAuth } from '@/context/AuthContext'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useTeams } from '@/hooks/useTeams'
+import { fetchProjects, deleteProject } from '@/services/projectsService'
+import { ProjectFormDialog } from '@/components/projects/ProjectFormDialog'
+import { ProjectCard } from '@/components/projects/ProjectCard'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Badge } from '@/components/ui/badge'
 
 export function ProjectsPage() {
   const { isManager } = useAuth()
+  const { teams } = useTeams()
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [teamId, setTeamId] = useState('')
+  const [formOpen, setFormOpen] = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [deleting, setDeleting] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const teamNames = useMemo(
+    () => Object.fromEntries(teams.map((t) => [t.teamId, t.name])),
+    [teams]
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const { data } = await api.get('/projects')
+      const data = await fetchProjects()
       setProjects(data)
     } catch (e) {
       toast.error(e.response?.data?.message || 'Failed to load projects')
@@ -42,18 +47,28 @@ export function ProjectsPage() {
     load()
   }, [load])
 
-  async function createProject(e) {
-    e.preventDefault()
+  function openCreate() {
+    setEditing(null)
+    setFormOpen(true)
+  }
+
+  function openEdit(project) {
+    setEditing(project)
+    setFormOpen(true)
+  }
+
+  async function confirmDelete() {
+    if (!deleting) return
+    setBusy(true)
     try {
-      await api.post('/projects', { name, description, teamId })
-      toast.success('Project created')
-      setOpen(false)
-      setName('')
-      setDescription('')
-      setTeamId('')
+      await deleteProject(deleting.projectId)
+      toast.success('Project deleted')
+      setDeleting(null)
       load()
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Create failed')
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Delete failed')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -62,41 +77,14 @@ export function ProjectsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
-          <p className="text-muted-foreground">Projects are scoped to a team in DynamoDB.</p>
+          <p className="text-muted-foreground">Team-scoped workspaces for your tasks.</p>
         </div>
-        {isManager && (
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button>New project</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create project</DialogTitle>
-              </DialogHeader>
-              <form className="space-y-3" onSubmit={createProject}>
-                <div className="space-y-2">
-                  <Label htmlFor="pname">Name</Label>
-                  <Input id="pname" value={name} onChange={(e) => setName(e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pdesc">Description</Label>
-                  <Textarea id="pdesc" value={description} onChange={(e) => setDescription(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pteam">Team ID</Label>
-                  <Input id="pteam" value={teamId} onChange={(e) => setTeamId(e.target.value)} required />
-                </div>
-                <Button type="submit" className="w-full">
-                  Create
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        )}
+        {isManager && <Button onClick={openCreate}>New project</Button>}
       </div>
 
       {loading ? (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <Skeleton className="h-36" />
           <Skeleton className="h-36" />
           <Skeleton className="h-36" />
         </div>
@@ -104,28 +92,52 @@ export function ProjectsPage() {
         <Card>
           <CardContent className="py-12 text-center text-sm text-muted-foreground">
             No projects yet.
+            {isManager && ' Create one to organize tasks.'}
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {projects.map((p) => (
-            <Card key={p.projectId} className="border-border/80">
-              <CardHeader>
-                <CardTitle className="flex items-start justify-between gap-2">
-                  <span>{p.name}</span>
-                  <Badge variant="outline" className="shrink-0 font-mono text-[10px]">
-                    {p.teamId?.slice(0, 8)}…
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm text-muted-foreground">
-                <p className="line-clamp-3">{p.description || 'No description'}</p>
-                <p className="font-mono text-xs">ID: {p.projectId}</p>
-              </CardContent>
-            </Card>
+            <ProjectCard
+              key={p.projectId}
+              project={p}
+              teamName={teamNames[p.teamId]}
+              isManager={isManager}
+              onEdit={openEdit}
+              onDelete={setDeleting}
+            />
           ))}
         </div>
       )}
+
+      {isManager && (
+        <ProjectFormDialog
+          open={formOpen}
+          onOpenChange={setFormOpen}
+          teams={teams}
+          project={editing}
+          onSaved={load}
+        />
+      )}
+
+      <Dialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete project?</DialogTitle>
+            <DialogDescription>
+              This removes <strong>{deleting?.name}</strong>. Tasks linked to this project may become orphaned.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setDeleting(null)} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={busy}>
+              {busy ? 'Deleting…' : 'Delete'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

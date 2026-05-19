@@ -1,21 +1,25 @@
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { api } from '@/services/api'
 import { useAuth } from '@/context/AuthContext'
 import { TeamFilter } from '@/components/TeamFilter'
 import { TaskDetailsModal } from '@/components/TaskDetailsModal'
 import { CreateTaskDialog } from '@/components/CreateTaskDialog'
 import { useTeams } from '@/hooks/useTeams'
+import { fetchTaskSummary } from '@/services/tasksService'
+import { statusLabel, priorityLabel } from '@/lib/constants'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Activity, Clock } from 'lucide-react'
 
 export function DashboardPage() {
   const { isManager } = useAuth()
   const { teams } = useTeams()
   const [teamFilter, setTeamFilter] = useState('')
-  const [tasks, setTasks] = useState([])
+  const [stats, setStats] = useState(null)
+  const [recentTasks, setRecentTasks] = useState([])
+  const [recentActivity, setRecentActivity] = useState([])
   const [loading, setLoading] = useState(true)
   const [modalId, setModalId] = useState(null)
 
@@ -24,10 +28,12 @@ export function DashboardPage() {
     try {
       const params = {}
       if (isManager && teamFilter) params.teamId = teamFilter
-      const { data } = await api.get('/tasks', { params })
-      setTasks(data)
+      const data = await fetchTaskSummary(params)
+      setStats(data.stats)
+      setRecentTasks(data.recentTasks || [])
+      setRecentActivity(data.recentActivity || [])
     } catch (e) {
-      toast.error(e.response?.data?.message || 'Failed to load tasks')
+      toast.error(e.response?.data?.message || 'Failed to load dashboard')
     } finally {
       setLoading(false)
     }
@@ -37,8 +43,7 @@ export function DashboardPage() {
     load()
   }, [load])
 
-  const openTasks = tasks.filter((t) => t.status !== 'Done').slice(0, 8)
-  const doneCount = tasks.filter((t) => t.status === 'Done').length
+  const openTasks = recentTasks.filter((t) => t.status !== 'DONE')
 
   return (
     <div className="space-y-8">
@@ -47,8 +52,8 @@ export function DashboardPage() {
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-muted-foreground">
             {isManager
-              ? 'Organization-wide visibility with optional team filtering (enforced on the server).'
-              : 'Tasks for your team only.'}
+              ? 'Live metrics from the API with optional team filtering.'
+              : 'Tasks and activity for your team only.'}
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
@@ -58,40 +63,77 @@ export function DashboardPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard title="Total tasks" value={stats?.total} loading={loading} />
+        <StatCard title="Done" value={stats?.done} loading={loading} />
+        <StatCard title="In progress" value={stats?.inProgress} loading={loading} />
+        <StatCard title="In review" value={stats?.inReview} loading={loading} />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total tasks</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <CardTitle>Recent tasks</CardTitle>
+            </div>
+            <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+              Refresh
+            </Button>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{loading ? '—' : tasks.length}</p>
+            {loading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : recentTasks.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No tasks yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {recentTasks.map((t) => (
+                  <li key={t.taskId}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-2 rounded-md border border-border/60 px-3 py-2 text-left text-sm hover:bg-muted/40"
+                      onClick={() => setModalId(t.taskId)}
+                    >
+                      <span className="font-medium">{t.title}</span>
+                      <Badge variant="secondary">{statusLabel(t.status)}</Badge>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
+
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Done</CardTitle>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-muted-foreground" />
+              <CardTitle>Recent activity</CardTitle>
+            </div>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold">{loading ? '—' : doneCount}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">In progress</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">
-              {loading ? '—' : tasks.filter((t) => t.status === 'In Progress').length}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">In review</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-3xl font-bold">
-              {loading ? '—' : tasks.filter((t) => t.status === 'In Review').length}
-            </p>
+            {loading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            ) : recentActivity.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No updates yet.</p>
+            ) : (
+              <ul className="space-y-3 text-sm">
+                {recentActivity.map((a) => (
+                  <li key={`${a.taskId}-${a.at}`} className="border-l-2 border-primary/40 pl-3">
+                    <p className="font-medium">{a.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Status → {statusLabel(a.status)} · {new Date(a.at).toLocaleString()}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -100,21 +142,17 @@ export function DashboardPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Open work</CardTitle>
-            <p className="text-sm text-muted-foreground">Click a row to open details.</p>
+            <p className="text-sm text-muted-foreground">Active tasks from your recent feed.</p>
           </div>
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            Refresh
-          </Button>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="space-y-2">
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
             </div>
           ) : openTasks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No active tasks. Great job, or create some work.</p>
+            <p className="text-sm text-muted-foreground">No active tasks.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -124,7 +162,7 @@ export function DashboardPage() {
                     <th className="py-2 pr-4 font-medium">Status</th>
                     <th className="py-2 pr-4 font-medium">Priority</th>
                     {isManager && <th className="py-2 pr-4 font-medium">Team</th>}
-                    <th className="py-2 font-medium">Deadline</th>
+                    <th className="py-2 font-medium">Due</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -136,14 +174,14 @@ export function DashboardPage() {
                     >
                       <td className="py-2 pr-4 font-medium">{t.title}</td>
                       <td className="py-2 pr-4">
-                        <Badge variant="secondary">{t.status}</Badge>
+                        <Badge variant="secondary">{statusLabel(t.status)}</Badge>
                       </td>
-                      <td className="py-2 pr-4">{t.priority}</td>
+                      <td className="py-2 pr-4">{priorityLabel(t.priority)}</td>
                       {isManager && (
                         <td className="py-2 pr-4 font-mono text-xs text-muted-foreground">{t.teamId}</td>
                       )}
                       <td className="py-2 text-muted-foreground">
-                        {t.deadline ? new Date(t.deadline).toLocaleDateString() : '—'}
+                        {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '—'}
                       </td>
                     </tr>
                   ))}
@@ -161,5 +199,18 @@ export function DashboardPage() {
         onUpdated={load}
       />
     </div>
+  )
+}
+
+function StatCard({ title, value, loading }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-3xl font-bold">{loading ? '—' : value ?? 0}</p>
+      </CardContent>
+    </Card>
   )
 }

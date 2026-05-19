@@ -8,8 +8,8 @@ const { docClient } = require('./dynamoClient');
 const { loadEnv } = require('../config/env');
 
 const { tasks: table } = loadEnv().dynamo;
-const GSI_TEAM = 'TeamTasksIndex';
-const GSI_ASSIGNEE = 'AssigneeTasksIndex';
+const GSI_TEAM = 'teamId-index';
+const GSI_ASSIGNEE = 'assigneeId-index';
 
 async function getById(taskId) {
   const r = await docClient.send(

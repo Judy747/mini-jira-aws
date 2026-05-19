@@ -1,9 +1,9 @@
 const { v4: uuidv4 } = require('uuid');
-const taskRepo = require('../services/taskRepository');
-const teamRepo = require('../services/teamRepository');
+const taskRepo = require('./taskRepository');
+const teamRepo = require('./teamRepository');
 const { AppError } = require('../utils/errors');
-
-const STATUSES = ['To Do', 'In Progress', 'In Review', 'Done'];
+const { TASK_STATUSES, TASK_PRIORITIES } = require('../utils/constants');
+const { normalizeStatus, normalizePriority, serializeTask } = require('../utils/taskNormalizer');
 
 function assertTaskVisible(profile, task) {
   if (!task) throw new AppError('Task not found', 404);
@@ -13,33 +13,48 @@ function assertTaskVisible(profile, task) {
   }
 }
 
+function parseDueDate(body) {
+  const raw = body.dueDate ?? body.deadline;
+  if (raw === undefined || raw === null || raw === '') return null;
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) throw new AppError('Invalid dueDate');
+  return d.toISOString();
+}
+
 /**
  * Lists tasks with server-side team scoping. Employees are always restricted to their team.
  * Managers may filter by teamId; without filter, tasks from all teams are aggregated.
  */
-async function listTasks(profile, { teamId: queryTeamId, projectId, status }) {
-  if (status && !STATUSES.includes(status)) {
+async function listTasks(profile, { teamId: queryTeamId, projectId, status } = {}) {
+  const normalizedStatus = status ? normalizeStatus(status) : null;
+  if (status && !normalizedStatus) {
     throw new AppError('Invalid status filter');
   }
+
+  let items;
   if (profile.role === 'EMPLOYEE') {
     const tid = profile.teamId;
     if (!tid) throw new AppError('Employee missing team', 403);
-    return taskRepo.queryByTeam(tid, { projectId, status });
+    items = await taskRepo.queryByTeam(tid, { projectId });
+  } else if (queryTeamId) {
+    items = await taskRepo.queryByTeam(queryTeamId, { projectId });
+  } else {
+    const teams = await teamRepo.listTeams();
+    const chunks = await Promise.all(
+      teams.map((t) => taskRepo.queryByTeam(t.teamId, { projectId }))
+    );
+    items = chunks.flat();
   }
-  if (queryTeamId) {
-    return taskRepo.queryByTeam(queryTeamId, { projectId, status });
+  if (normalizedStatus) {
+    items = items.filter((t) => normalizeStatus(t.status) === normalizedStatus);
   }
-  const teams = await teamRepo.listTeams();
-  const chunks = await Promise.all(
-    teams.map((t) => taskRepo.queryByTeam(t.teamId, { projectId, status }))
-  );
-  return chunks.flat();
+  return items.map(serializeTask);
 }
 
 async function getTask(profile, taskId) {
   const task = await taskRepo.getById(taskId);
   assertTaskVisible(profile, task);
-  return task;
+  return serializeTask(task);
 }
 
 async function createTask(profile, body) {
@@ -51,34 +66,41 @@ async function createTask(profile, body) {
     description,
     priority,
     status,
-    deadline,
     assigneeId,
     teamId,
     projectId,
     imageUrl,
-  } = body;
-  if (!title || !teamId || !projectId) {
+  } = body || {};
+
+  if (!title?.trim() || !teamId?.trim() || !projectId?.trim()) {
     throw new AppError('title, teamId, and projectId are required');
   }
-  const st = status && STATUSES.includes(status) ? status : 'To Do';
+
+  const st = normalizeStatus(status) || 'TODO';
+  if (!TASK_STATUSES.includes(st)) throw new AppError('Invalid status');
+
+  const pr = normalizePriority(priority) || 'MEDIUM';
+  if (!TASK_PRIORITIES.includes(pr)) throw new AppError('Invalid priority');
+
   const now = new Date().toISOString();
   const taskId = uuidv4();
   const item = {
     taskId,
-    title,
-    description: description || '',
-    priority: priority || 'Medium',
+    title: title.trim(),
+    description: (description || '').trim(),
+    priority: pr,
     status: st,
-    deadline: deadline || null,
-    assigneeId: assigneeId || null,
-    teamId,
-    projectId,
+    dueDate: parseDueDate(body),
+    assigneeId: assigneeId?.trim() || null,
+    teamId: teamId.trim(),
+    projectId: projectId.trim(),
     imageUrl: imageUrl || null,
+    createdBy: profile.userId,
     createdAt: now,
     updatedAt: now,
   };
   await taskRepo.putTask(item);
-  return item;
+  return serializeTask(item);
 }
 
 async function updateTask(profile, taskId, body) {
@@ -89,19 +111,39 @@ async function updateTask(profile, taskId, body) {
   const patch = { ...body };
   delete patch.taskId;
   delete patch.createdAt;
+  delete patch.createdBy;
+
+  if (patch.deadline !== undefined && patch.dueDate === undefined) {
+    patch.dueDate = patch.deadline;
+  }
+  delete patch.deadline;
 
   if (!isPrivileged) {
     const allowed = ['status', 'imageUrl'];
     for (const k of Object.keys(patch)) {
       if (!allowed.includes(k)) delete patch[k];
     }
-    if (patch.status && !STATUSES.includes(patch.status)) {
-      throw new AppError('Invalid status');
-    }
-  } else {
-    if (patch.status && !STATUSES.includes(patch.status)) {
-      throw new AppError('Invalid status');
-    }
+  }
+
+  if (patch.status !== undefined) {
+    const st = normalizeStatus(patch.status);
+    if (!st || !TASK_STATUSES.includes(st)) throw new AppError('Invalid status');
+    patch.status = st;
+  }
+
+  if (patch.priority !== undefined) {
+    const pr = normalizePriority(patch.priority);
+    if (!pr || !TASK_PRIORITIES.includes(pr)) throw new AppError('Invalid priority');
+    patch.priority = pr;
+  }
+
+  if (patch.dueDate !== undefined || patch.deadline !== undefined) {
+    patch.dueDate = parseDueDate(patch);
+  }
+
+  if (patch.title !== undefined) {
+    if (!String(patch.title).trim()) throw new AppError('title cannot be empty');
+    patch.title = String(patch.title).trim();
   }
 
   if (!isPrivileged && patch.status === undefined && patch.imageUrl === undefined) {
@@ -115,7 +157,7 @@ async function updateTask(profile, taskId, body) {
     updatedAt: new Date().toISOString(),
   };
   await taskRepo.putTask(next);
-  return next;
+  return serializeTask(next);
 }
 
 async function removeTask(profile, taskId) {
@@ -127,11 +169,41 @@ async function removeTask(profile, taskId) {
   await taskRepo.deleteTask(taskId);
 }
 
+/** Dashboard aggregates — counts and recent items */
+async function getTaskSummary(profile, { teamId: queryTeamId } = {}) {
+  const tasks = await listTasks(profile, { teamId: queryTeamId });
+  const stats = {
+    total: tasks.length,
+    done: tasks.filter((t) => t.status === 'DONE').length,
+    inProgress: tasks.filter((t) => t.status === 'IN_PROGRESS').length,
+    inReview: tasks.filter((t) => t.status === 'IN_REVIEW').length,
+    todo: tasks.filter((t) => t.status === 'TODO').length,
+  };
+  const recentTasks = [...tasks]
+    .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
+    .slice(0, 8);
+  const recentActivity = [...tasks]
+    .filter((t) => t.updatedAt && t.updatedAt !== t.createdAt)
+    .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
+    .slice(0, 10)
+    .map((t) => ({
+      type: 'task_updated',
+      taskId: t.taskId,
+      title: t.title,
+      status: t.status,
+      teamId: t.teamId,
+      at: t.updatedAt,
+    }));
+  return { stats, recentTasks, recentActivity };
+}
+
 module.exports = {
   listTasks,
   getTask,
   createTask,
   updateTask,
   removeTask,
-  STATUSES,
+  getTaskSummary,
+  TASK_STATUSES,
+  TASK_PRIORITIES,
 };

@@ -9,7 +9,7 @@ const { docClient } = require('./dynamoClient');
 const { loadEnv } = require('../config/env');
 
 const { projects: table } = loadEnv().dynamo;
-const TEAM_GSI = 'TeamProjectsIndex';
+const TEAM_GSI = 'teamId-index';
 
 async function getById(projectId) {
   const r = await docClient.send(
