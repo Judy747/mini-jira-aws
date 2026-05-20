@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const taskRepo = require('./taskRepository');
 const teamRepo = require('./teamRepository');
 const { AppError } = require('../utils/errors');
+const { publishMetric } = require('./cloudwatchService');
 const { TASK_STATUSES, TASK_PRIORITIES } = require('../utils/constants');
 const { normalizeStatus, normalizePriority, serializeTask } = require('../utils/taskNormalizer');
 const { publishTaskAssignedEvent } = require('./assignmentEvents');
@@ -20,6 +21,25 @@ function parseDueDate(body) {
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) throw new AppError('Invalid dueDate');
   return d.toISOString();
+}
+
+/**
+ * Tasks that are not done and have a due date strictly before now (UTC).
+ * Uses normalized status so legacy rows (e.g. "Done") still behave correctly.
+ */
+function countOverdueTasks(tasks) {
+  const now = Date.now();
+  let n = 0;
+  for (const t of tasks) {
+    const st = normalizeStatus(t.status) || t.status;
+    if (st === 'DONE') continue;
+    const dueRaw = t.dueDate ?? t.deadline;
+    if (!dueRaw) continue;
+    const dueMs = new Date(dueRaw).getTime();
+    if (Number.isNaN(dueMs)) continue;
+    if (dueMs < now) n += 1;
+  }
+  return n;
 }
 
 /**
@@ -101,6 +121,7 @@ async function createTask(profile, body) {
     updatedAt: now,
   };
   await taskRepo.putTask(item);
+  await publishMetric('TasksCreated', 1);
   if (item.assigneeId) {
     publishTaskAssignedEvent({
       taskId: item.taskId,
@@ -186,6 +207,17 @@ async function updateTask(profile, taskId, body) {
     });
   }
 
+  const prevStatus = normalizeStatus(existing.status) || existing.status;
+  const newStatus = normalizeStatus(next.status) || next.status;
+  if (prevStatus !== 'DONE' && newStatus === 'DONE') {
+    await publishMetric('TasksCompleted', 1);
+    await publishMetric(
+      'TasksCompletedPerTeam',
+      1,
+      [{ Name: 'Team', Value: String(next.teamId || 'unknown') }]
+    );
+  }
+
   return serializeTask(next);
 }
 
@@ -201,6 +233,9 @@ async function removeTask(profile, taskId) {
 /** Dashboard aggregates — counts and recent items */
 async function getTaskSummary(profile, { teamId: queryTeamId } = {}) {
   const tasks = await listTasks(profile, { teamId: queryTeamId });
+  const overdueCount = countOverdueTasks(tasks);
+  await publishMetric('OverdueTasks', overdueCount);
+
   const stats = {
     total: tasks.length,
     done: tasks.filter((t) => t.status === 'DONE').length,
