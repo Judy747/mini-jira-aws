@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useLocation, Navigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAuth } from '@/context/AuthContext'
@@ -8,13 +8,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 export function LoginPage() {
-  const { login, token, loading } = useAuth()
+  const { login, token, loading, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const from = location.state?.from || '/'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
+
+  /** Drop stale Cognito tokens so refresh does not reuse an invalid JWT */
+  useEffect(() => {
+    if (token) logout()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (token && loading) {
     return (
@@ -36,7 +41,7 @@ export function LoginPage() {
       toast.success('Welcome back')
       navigate(from, { replace: true })
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Login failed')
+      toast.error(err.message || err.response?.data?.message || 'Login failed')
     } finally {
       setBusy(false)
     }
