@@ -43,6 +43,8 @@ function loadEnv() {
       publicBaseUrl: process.env.S3_PUBLIC_BASE_URL || '',
     },
     corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    /** Task-assignment fan-out (SNS → email + SQS → worker Lambda) */
+    snsTaskAssignmentTopicArn: process.env.SNS_TASK_ASSIGNMENT_TOPIC_ARN || '',
   };
 }
 

@@ -4,6 +4,7 @@ const teamRepo = require('./teamRepository');
 const { AppError } = require('../utils/errors');
 const { TASK_STATUSES, TASK_PRIORITIES } = require('../utils/constants');
 const { normalizeStatus, normalizePriority, serializeTask } = require('../utils/taskNormalizer');
+const { publishTaskAssignedEvent } = require('./assignmentEvents');
 
 function assertTaskVisible(profile, task) {
   if (!task) throw new AppError('Task not found', 404);
@@ -100,6 +101,15 @@ async function createTask(profile, body) {
     updatedAt: now,
   };
   await taskRepo.putTask(item);
+  if (item.assigneeId) {
+    publishTaskAssignedEvent({
+      taskId: item.taskId,
+      title: item.title,
+      teamId: item.teamId,
+      assigneeId: item.assigneeId,
+      assignedBy: profile.userId,
+    });
+  }
   return serializeTask(item);
 }
 
@@ -150,6 +160,10 @@ async function updateTask(profile, taskId, body) {
     throw new AppError('No permitted fields to update', 400);
   }
 
+  if (patch.assigneeId !== undefined) {
+    patch.assigneeId = patch.assigneeId?.trim() || null;
+  }
+
   const next = {
     ...existing,
     ...patch,
@@ -157,6 +171,21 @@ async function updateTask(profile, taskId, body) {
     updatedAt: new Date().toISOString(),
   };
   await taskRepo.putTask(next);
+
+  const assigneeChanged =
+    patch.assigneeId !== undefined &&
+    next.assigneeId &&
+    next.assigneeId !== existing.assigneeId;
+  if (assigneeChanged) {
+    publishTaskAssignedEvent({
+      taskId: next.taskId,
+      title: next.title,
+      teamId: next.teamId,
+      assigneeId: next.assigneeId,
+      assignedBy: profile.userId,
+    });
+  }
+
   return serializeTask(next);
 }
 
