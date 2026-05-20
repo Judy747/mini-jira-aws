@@ -2,15 +2,6 @@
 # EC2 user-data bootstrap for the Mini Jira backend.
 # Runs as root on first boot of every instance in the Auto Scaling Group.
 # Designed for Amazon Linux 2023. Logs go to /var/log/user-data.log and CloudWatch.
-#
-# Expected environment (set by the Launch Template or replaced before upload):
-#   REGION            AWS region (e.g. us-east-1)
-#   GIT_REPO_URL      HTTPS URL of this repository
-#   GIT_BRANCH        Branch to deploy (e.g. main)
-#   SSM_PREFIX        Parameter Store prefix that holds the backend env (e.g. /mini-jira/prod)
-#
-# All app secrets live in SSM Parameter Store under $SSM_PREFIX/<KEY>. The instance
-# profile must grant ssm:GetParametersByPath on that prefix.
 
 set -euo pipefail
 exec > >(tee -a /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
@@ -18,7 +9,7 @@ exec > >(tee -a /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 
 REGION="${REGION:-us-east-1}"
 GIT_REPO_URL="${GIT_REPO_URL:-https://github.com/Judy747/mini-jira-aws.git}"
 GIT_BRANCH="${GIT_BRANCH:-main}"
-SSM_PREFIX="${SSM_PREFIX:-/mini-jira/prod}"
+SSM_PREFIX="${SSM_PREFIX:-/mini-jira}"
 APP_DIR="/opt/mini-jira"
 APP_USER="miniapp"
 APP_PORT="${APP_PORT:-4000}"
