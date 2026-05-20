@@ -1,19 +1,28 @@
+# Dependencies
 node_modules/
 dist/
 build/
 
+# Local secrets — never commit real keys
 .env
+.env.local
 .env.*.local
 *.local
+backend/.env
+frontend/.env
 
+# Build output
+frontend/dist/
+
+# OS / editor
 .DS_Store
 Thumbs.db
 *.log
-
 .idea/
 .vscode/
 *.swp
 
+# Infra local state (Kenzy)
 infra/*.local.json
 infra/*.tfstate
 infra/.terraform/

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { isAxiosError } from 'axios'
 import { api, setAuthToken } from '@/services/api'
 
 const AuthContext = createContext(null)
@@ -46,8 +47,33 @@ export function AuthProvider({ children }) {
   const login = useCallback(
     async (email, password) => {
       const { data } = await api.post('/auth/login', { email, password })
-      setToken(data.idToken)
-      return data
+      const idToken = data.idToken
+      if (!idToken) {
+        throw new Error('Login succeeded but no token was returned')
+      }
+      setAuthToken(idToken)
+      setLoading(true)
+      try {
+        const { data: me } = await api.get('/auth/me')
+        setProfile(me)
+        setToken(idToken)
+        return data
+      } catch (err) {
+        setAuthToken(null)
+        setToken('')
+        setProfile(null)
+        const msg = isAxiosError(err)
+          ? err.response?.data?.message
+          : err instanceof Error
+            ? err.message
+            : null
+        throw new Error(
+          msg ||
+            'Signed in to Cognito but your app profile is missing. Add a row in DynamoDB mini-jira-users with your Cognito userId (sub) and role MANAGER.'
+        )
+      } finally {
+        setLoading(false)
+      }
     },
     [setToken]
   )
