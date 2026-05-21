@@ -22,17 +22,18 @@ app.use(
 );
 app.use(express.json({ limit: '2mb' }));
 
+// Health check stays at /health (ALB checks this directly, not through CloudFront)
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
-app.use('/auth', authRoutes);
+app.use('/api/auth', authRoutes);
 
 app.use(authMiddleware);
-app.get('/auth/me', (req, res) => res.json(req.auth.profile));
-app.use('/tasks', taskRoutes);
-app.use('/projects', projectRoutes);
-app.use('/comments', commentRoutes);
-app.use('/audit', auditRoutes);
-app.use('/', userRoutes);
+app.get('/api/auth/me', (req, res) => res.json(req.auth.profile));
+app.use('/api/tasks', taskRoutes);
+app.use('/api/projects', projectRoutes);
+app.use('/api/comments', commentRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api', userRoutes);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
