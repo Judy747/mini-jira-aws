@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { api } from '@/services/api'
-import { fetchTask, updateTask } from '@/services/tasksService'
+import { fetchTask, updateTask, deleteTask } from '@/services/tasksService'
 import { fetchAuditForTask } from '@/services/auditService'
+import { fetchProjects } from '@/services/projectsService'
 import { taskImageSrc, uploadTaskImage } from '@/lib/images'
 import {
   Dialog,
@@ -12,13 +13,50 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Label } from '@/components/ui/label'
-import { TASK_STATUSES, statusLabel, priorityLabel } from '@/lib/constants'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  TASK_STATUSES,
+  TASK_PRIORITIES,
+  statusLabel,
+  priorityLabel,
+} from '@/lib/constants'
+import { useAuth } from '@/context/AuthContext'
+import { useTeams } from '@/hooks/useTeams'
+
+// datetime-local needs "YYYY-MM-DDTHH:mm" (no seconds, no Z) in local tz
+function toDateTimeLocalValue(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n) => String(n).padStart(2, '0')
+  return (
+    d.getFullYear() +
+    '-' +
+    pad(d.getMonth() + 1) +
+    '-' +
+    pad(d.getDate()) +
+    'T' +
+    pad(d.getHours()) +
+    ':' +
+    pad(d.getMinutes())
+  )
+}
 
 export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refreshSignal = 0 }) {
+  const { isManager } = useAuth()
+  const { teams } = useTeams()
+
   const [task, setTask] = useState(null)
   const [comments, setComments] = useState([])
   const [audit, setAudit] = useState([])
@@ -27,12 +65,21 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
   const [uploading, setUploading] = useState(false)
   const [thumbError, setThumbError] = useState(false)
 
+  // edit-mode state (managers only)
+  const [editMode, setEditMode] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [draft, setDraft] = useState(null)
+  const [users, setUsers] = useState([])
+  const [projects, setProjects] = useState([])
+  const [deleting, setDeleting] = useState(false)
+
   useEffect(() => {
     if (!open || !taskId) return
     let cancelled = false
     ;(async () => {
       setLoading(true)
       setThumbError(false)
+      setEditMode(false)
       try {
         const [t, cRes, auditRows] = await Promise.all([
           fetchTask(taskId),
@@ -76,6 +123,43 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
       cancelled = true
     }
   }, [refreshSignal, open, taskId])
+
+  // Load users (assignee picker) once in edit mode for managers
+  useEffect(() => {
+    if (!editMode || !isManager) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await api.get('/users')
+        if (!cancelled) setUsers(data)
+      } catch {
+        if (!cancelled) setUsers([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [editMode, isManager])
+
+  // Load projects for the draft's team whenever the team changes in edit mode
+  useEffect(() => {
+    if (!editMode || !draft?.teamId) {
+      setProjects([])
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await fetchProjects({ teamId: draft.teamId })
+        if (!cancelled) setProjects(data)
+      } catch {
+        if (!cancelled) setProjects([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [editMode, draft?.teamId])
 
   async function addComment() {
     if (!commentText.trim()) return
@@ -131,6 +215,85 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
     }
   }
 
+  function startEdit() {
+    if (!task) return
+    setDraft({
+      title: task.title || '',
+      description: task.description || '',
+      priority: task.priority || 'MEDIUM',
+      status: task.status || 'TODO',
+      dueDate: toDateTimeLocalValue(task.dueDate),
+      assigneeId: task.assigneeId || '',
+      teamId: task.teamId || '',
+      projectId: task.projectId || '',
+    })
+    setEditMode(true)
+  }
+
+  function cancelEdit() {
+    setDraft(null)
+    setEditMode(false)
+  }
+
+  async function handleDelete() {
+    if (!taskId) return
+    const confirmed = window.confirm(
+      `Delete task "${task?.title || taskId}"? This will also remove its comments, audit history, and any attached image. This cannot be undone.`
+    )
+    if (!confirmed) return
+    setDeleting(true)
+    try {
+      await deleteTask(taskId)
+      toast.success('Task deleted')
+      onUpdated?.()
+      onOpenChange?.(false)
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to delete task')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  async function saveEdit() {
+    if (!draft) return
+    if (!draft.title.trim()) {
+      toast.error('Title is required')
+      return
+    }
+    if (!draft.teamId) {
+      toast.error('Team is required')
+      return
+    }
+    if (!draft.projectId) {
+      toast.error('Project is required')
+      return
+    }
+    setSavingEdit(true)
+    try {
+      const payload = {
+        title: draft.title.trim(),
+        description: draft.description,
+        priority: draft.priority,
+        status: draft.status,
+        dueDate: draft.dueDate ? new Date(draft.dueDate).toISOString() : null,
+        assigneeId: draft.assigneeId || null,
+        teamId: draft.teamId,
+        projectId: draft.projectId,
+      }
+      const updated = await updateTask(taskId, payload)
+      setTask(updated)
+      await reloadAudit()
+      toast.success('Task updated')
+      onUpdated?.()
+      setEditMode(false)
+      setDraft(null)
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to update task')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   const previewSrc = task ? taskImageSrc(task) : null
 
   return (
@@ -147,29 +310,187 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              <Badge>{priorityLabel(task.priority)}</Badge>
-              <Badge variant="secondary">{statusLabel(task.status)}</Badge>
-            </div>
-            <p className="whitespace-pre-wrap text-sm text-muted-foreground">{task.description}</p>
-            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-              <div>
-                <span className="font-medium text-foreground">Due date</span>
-                <div>{task.dueDate ? new Date(task.dueDate).toLocaleString() : '—'}</div>
+            {isManager && !editMode && (
+              <div className="flex justify-end gap-2">
+                <Button type="button" size="sm" variant="outline" onClick={startEdit}>
+                  Edit details
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? 'Deleting…' : 'Delete task'}
+                </Button>
               </div>
-              <div>
-                <span className="font-medium text-foreground">Team</span>
-                <div className="font-mono">{task.teamId}</div>
+            )}
+
+            {editMode && draft ? (
+              <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
+                <div className="space-y-2">
+                  <Label htmlFor="ed-title">Title</Label>
+                  <Input
+                    id="ed-title"
+                    value={draft.title}
+                    onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ed-desc">Description</Label>
+                  <Textarea
+                    id="ed-desc"
+                    value={draft.description}
+                    onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Priority</Label>
+                    <Select
+                      value={draft.priority}
+                      onValueChange={(v) => setDraft({ ...draft, priority: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TASK_PRIORITIES.map((p) => (
+                          <SelectItem key={p} value={p}>
+                            {priorityLabel(p)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Select
+                      value={draft.status}
+                      onValueChange={(v) => setDraft({ ...draft, status: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TASK_STATUSES.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {statusLabel(s)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ed-due">Due date</Label>
+                  <Input
+                    id="ed-due"
+                    type="datetime-local"
+                    value={draft.dueDate}
+                    onChange={(e) => setDraft({ ...draft, dueDate: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Assignee</Label>
+                  <Select
+                    value={draft.assigneeId || '_none'}
+                    onValueChange={(v) =>
+                      setDraft({ ...draft, assigneeId: v === '_none' ? '' : v })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Unassigned" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">Unassigned</SelectItem>
+                      {users.map((u) => (
+                        <SelectItem key={u.userId} value={u.userId}>
+                          {u.name || u.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Team</Label>
+                    <Select
+                      value={draft.teamId}
+                      onValueChange={(v) =>
+                        setDraft({ ...draft, teamId: v, projectId: '' })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select team" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {teams.map((t) => (
+                          <SelectItem key={t.teamId} value={t.teamId}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Project</Label>
+                    <Select
+                      value={draft.projectId}
+                      onValueChange={(v) => setDraft({ ...draft, projectId: v })}
+                      disabled={!draft.teamId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={draft.teamId ? 'Select project' : 'Pick team first'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projects.map((p) => (
+                          <SelectItem key={p.projectId} value={p.projectId}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button type="button" onClick={saveEdit} disabled={savingEdit}>
+                    {savingEdit ? 'Saving…' : 'Save changes'}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={cancelEdit} disabled={savingEdit}>
+                    Cancel
+                  </Button>
+                </div>
               </div>
-              <div>
-                <span className="font-medium text-foreground">Project</span>
-                <div className="font-mono">{task.projectId}</div>
-              </div>
-              <div>
-                <span className="font-medium text-foreground">Assignee</span>
-                <div className="font-mono">{task.assigneeId || '—'}</div>
-              </div>
-            </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <Badge>{priorityLabel(task.priority)}</Badge>
+                  <Badge variant="secondary">{statusLabel(task.status)}</Badge>
+                </div>
+                <p className="whitespace-pre-wrap text-sm text-muted-foreground">{task.description}</p>
+                <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                  <div>
+                    <span className="font-medium text-foreground">Due date</span>
+                    <div>{task.dueDate ? new Date(task.dueDate).toLocaleString() : '—'}</div>
+                  </div>
+                  <div>
+                    <span className="font-medium text-foreground">Team</span>
+                    <div className="font-mono">{task.teamId}</div>
+                  </div>
+                  <div>
+                    <span className="font-medium text-foreground">Project</span>
+                    <div className="font-mono">{task.projectId}</div>
+                  </div>
+                  <div>
+                    <span className="font-medium text-foreground">Assignee</span>
+                    <div className="font-mono">{task.assigneeId || '—'}</div>
+                  </div>
+                </div>
+              </>
+            )}
+
             {previewSrc && (
               <div className="space-y-2">
                 <Label className="text-foreground">Attachment</Label>
