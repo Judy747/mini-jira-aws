@@ -138,7 +138,37 @@ Dual-bucket uploads (originals + resized thumbnails), presigned browser PUT, and
 - **Audit API:** `GET /audit/:taskId` (Bearer token; same access rules as viewing the task).
 - **DynamoDB:** Table `mini-jira-status-audit` (PK `taskId`, SK `auditId`). Deploy `infra/dynamodb-status-audit.yaml` or run `node backend/scripts/create-status-audit-table.js`.
 - **Env:** `DYNAMODB_STATUS_AUDIT_TABLE=mini-jira-status-audit` (required; matches EC2 IAM `mini-jira-*` pattern).
-- **Digest Lambda:** `backend/lambda/digestLambda.js` — deploy as a Lambda, set `TOPIC_ARN` to an SNS topic with email subscription, trigger daily at 9 AM with EventBridge rule `cron(0 9 * * ? *)`.
+
+### Daily digest (EventBridge + Lambda + SNS)
+
+| Piece | Location |
+|-------|----------|
+| Lambda code | `backend/lambda/digestLambda/` — scans tasks due **today** (in `DIGEST_TIMEZONE`), groups by assignee, publishes one SNS message |
+| IaC | `infra/digest-lambda.yaml` — SNS topic, Lambda IAM (tasks + users read, SNS publish), EventBridge **Scheduler** `cron(0 9 * * ? *)` at 9:00 in your timezone |
+
+**Deploy:**
+
+```bash
+cd backend/lambda/digestLambda && npm ci --omit=dev
+# zip contents (index.js + node_modules) to digestLambda.zip, upload to S3
+
+aws cloudformation deploy \
+  --stack-name mini-jira-digest \
+  --template-file infra/digest-lambda.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+      ProjectName=mini-jira \
+      EnvName=prod \
+      TasksTableName=mini-jira-tasks \
+      UsersTableName=mini-jira-users \
+      DigestHour=9 \
+      DigestTimezone=Africa/Cairo \
+      DigestNotificationEmail=you@example.com \
+      LambdaCodeS3Bucket=your-deploy-bucket \
+      LambdaCodeS3Key=lambda/digestLambda.zip
+```
+
+**Lambda env:** `SNS_DIGEST_TOPIC_ARN`, `DYNAMODB_TASKS_TABLE`, `DYNAMODB_USERS_TABLE`, `DIGEST_TIMEZONE` (set by the stack). Confirm the SNS email subscription in your inbox after deploy.
 
 ## Drag and drop
 
