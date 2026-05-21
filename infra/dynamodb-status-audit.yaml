@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Status audit log table for mini-jira-aws.
+  PK taskId, SK auditId — one row per status transition (who / when / from → to).
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: mini-jira
+  TableName:
+    Type: String
+    Default: ""
+    Description: Override table name. Leave blank to use ${ProjectName}-status-audit.
+
+Conditions:
+  UseDefaultTableName: !Equals [!Ref TableName, ""]
+
+Resources:
+  StatusAuditTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If
+        - UseDefaultTableName
+        - !Sub "${ProjectName}-status-audit"
+        - !Ref TableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: taskId
+          AttributeType: S
+        - AttributeName: auditId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: taskId
+          KeyType: HASH
+        - AttributeName: auditId
+          KeyType: RANGE
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-status-audit"
+
+Outputs:
+  StatusAuditTableName:
+    Value: !Ref StatusAuditTable
+  StatusAuditTableArn:
+    Value: !GetAtt StatusAuditTable.Arn

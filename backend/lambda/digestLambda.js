@@ -22,7 +22,7 @@ Mini Jira AWS — Daily Digest (demo)
 
 Summary:
 - Open tasks reviewed across all teams
-- Status changes logged to StatusAudit table
+- Status changes logged to mini-jira-status-audit table
 - CloudWatch metrics namespace: MiniJira
 
 This is static demo content. Replace with real aggregates (overdue count, completions, etc.) when ready.

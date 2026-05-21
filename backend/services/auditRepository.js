@@ -1,4 +1,4 @@
-const { PutCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { PutCommand, QueryCommand, BatchWriteCommand } = require('@aws-sdk/lib-dynamodb');
 const { docClient } = require('./dynamoClient');
 const { loadEnv } = require('../config/env');
 
@@ -23,4 +23,26 @@ async function listByTask(taskId) {
   return r.Items || [];
 }
 
-module.exports = { createEntry, listByTask };
+async function deleteByTask(taskId) {
+  const items = await listByTask(taskId);
+  if (!items.length) return;
+  const chunks = [];
+  for (let i = 0; i < items.length; i += 25) {
+    chunks.push(items.slice(i, i + 25));
+  }
+  for (const batch of chunks) {
+    await docClient.send(
+      new BatchWriteCommand({
+        RequestItems: {
+          [table]: batch.map((row) => ({
+            DeleteRequest: {
+              Key: { taskId: row.taskId, auditId: row.auditId },
+            },
+          })),
+        },
+      })
+    );
+  }
+}
+
+module.exports = { createEntry, listByTask, deleteByTask };
