@@ -63,6 +63,7 @@ The API now returns Cognito’s message in the JSON body (not only “Internal s
 | Tasks | `GET /tasks`, `GET /tasks/summary`, `GET /tasks/:id`, `POST /tasks`, `PUT /tasks/:id`, `DELETE /tasks/:id` |
 | Projects | `GET /projects`, `GET /projects/:id`, `POST /projects`, `PUT /projects/:id`, `DELETE /projects/:id` |
 | Comments | `GET /comments/:taskId`, `POST /comments` |
+| Audit | `GET /audit/:taskId` — status change history (newest first) |
 | Directory | `GET /users` (manager/admin), `GET /teams`, `POST /teams` (admin), `POST /users` (admin) |
 | Uploads | `POST /uploads/presign` — returns `{ uploadUrl, key, publicUrl }` |
 
@@ -108,6 +109,16 @@ All routes except `/auth/*` and `/health` require a valid **Cognito ID token** (
 
 **GSI `AssigneeTasksIndex`:** PK = `assigneeId`, SK = `taskId` (optional “my work” views; sparse if `assigneeId` absent).
 
+### `StatusAudit` (`DYNAMODB_STATUS_AUDIT_TABLE`, default table name `StatusAudit`)
+
+| Attribute | Type | Key |
+|-----------|------|-----|
+| `taskId` | String | **PK** |
+| `auditId` | String (UUID) | **SK** |
+| `changedBy`, `fromStatus`, `toStatus`, `changedAt` | String | — |
+
+Written automatically when a task status changes via `PUT /tasks/:id` or Kanban drag-and-drop.
+
 ### `Comments` (`DYNAMODB_COMMENTS_TABLE`)
 
 | Attribute | Type | Key |
@@ -115,6 +126,13 @@ All routes except `/auth/*` and `/health` require a valid **Cognito ID token** (
 | `taskId` | String | **PK** |
 | `commentId` | String (UUID) | **SK** |
 | `text`, `authorId`, `authorName`, `createdAt` | String | — |
+
+## Status audit & daily digest (Kenzy)
+
+- **Audit API:** `GET /audit/:taskId` (Bearer token; same access rules as viewing the task).
+- **DynamoDB:** Create table `StatusAudit` with PK `taskId`, SK `auditId` (on-demand billing is fine for free tier).
+- **Env:** `DYNAMODB_STATUS_AUDIT_TABLE=StatusAudit` (optional; this is the default).
+- **Digest Lambda:** `backend/lambda/digestLambda.js` — deploy as a Lambda, set `TOPIC_ARN` to an SNS topic with email subscription, trigger daily at 9 AM with EventBridge rule `cron(0 9 * * ? *)`.
 
 ## Drag and drop
 
