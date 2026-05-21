@@ -9,6 +9,7 @@ const taskRoutes = require('../routes/taskRoutes');
 const projectRoutes = require('../routes/projectRoutes');
 const commentRoutes = require('../routes/commentRoutes');
 const userRoutes = require('../routes/userRoutes');
+const auditRoutes = require('../routes/auditRoutes');
 
 const cfg = loadEnv();
 const app = express();
@@ -30,6 +31,7 @@ app.get('/auth/me', (req, res) => res.json(req.auth.profile));
 app.use('/tasks', taskRoutes);
 app.use('/projects', projectRoutes);
 app.use('/comments', commentRoutes);
+app.use('/audit', auditRoutes);
 app.use('/', userRoutes);
 
 // eslint-disable-next-line no-unused-vars
