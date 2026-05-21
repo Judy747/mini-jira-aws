@@ -1,0 +1,202 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Daily digest Lambda + SNS topic + EventBridge Scheduler (9:00 AM in your timezone).
+  Scans tasks due today, groups by assignee, sends one email via SNS.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: mini-jira
+
+  EnvName:
+    Type: String
+    Default: prod
+
+  TasksTableName:
+    Type: String
+    Default: mini-jira-tasks
+    Description: DynamoDB tasks table the Lambda scans.
+
+  UsersTableName:
+    Type: String
+    Default: mini-jira-users
+    Description: DynamoDB users table for assignee name/email lookup.
+
+  DigestHour:
+    Type: Number
+    Default: 9
+    MinValue: 0
+    MaxValue: 23
+    Description: Hour (0-23) to run the digest in DigestTimezone.
+
+  DigestTimezone:
+    Type: String
+    Default: UTC
+    Description: >
+      IANA timezone for the schedule and due-date comparison
+      (e.g. Africa/Cairo, America/New_York, Europe/London).
+
+  DigestNotificationEmail:
+    Type: String
+    Default: ""
+    Description: >
+      Optional email for SNS subscription (must confirm via inbox).
+      Leave blank if the topic already has subscribers.
+
+  LambdaCodeS3Bucket:
+    Type: String
+    Default: ""
+    Description: >
+      S3 bucket containing digestLambda.zip. Leave blank to deploy code
+      manually after stack creation (see README).
+
+  LambdaCodeS3Key:
+    Type: String
+    Default: lambda/digestLambda.zip
+
+Conditions:
+  HasDigestEmail: !Not [!Equals [!Ref DigestNotificationEmail, ""]]
+  HasLambdaCode: !Not [!Equals [!Ref LambdaCodeS3Bucket, ""]]
+
+Resources:
+  DigestTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${ProjectName}-${EnvName}-digest"
+      DisplayName: Mini Jira Daily Digest
+
+  DigestLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${EnvName}-digest-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: digest-data-and-sns
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: DynamoTasksRead
+                Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                Resource:
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TasksTableName}"
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${TasksTableName}/index/*"
+              - Sid: DynamoUsersRead
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Scan
+                Resource:
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${UsersTableName}"
+              - Sid: SnsPublishDigest
+                Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref DigestTopic
+
+  DigestLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-${EnvName}-digest"
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Timeout: 120
+      MemorySize: 256
+      Role: !GetAtt DigestLambdaRole.Arn
+      Code: !If
+        - HasLambdaCode
+        - S3Bucket: !Ref LambdaCodeS3Bucket
+          S3Key: !Ref LambdaCodeS3Key
+        - ZipFile: |
+            exports.handler = async () => ({
+              ok: false,
+              message: 'Upload digestLambda.zip and update function code (see README).',
+            });
+      Environment:
+        Variables:
+          DYNAMODB_TASKS_TABLE: !Ref TasksTableName
+          DYNAMODB_USERS_TABLE: !Ref UsersTableName
+          SNS_DIGEST_TOPIC_ARN: !Ref DigestTopic
+          DIGEST_TIMEZONE: !Ref DigestTimezone
+
+  DigestEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasDigestEmail
+    Properties:
+      TopicArn: !Ref DigestTopic
+      Protocol: email
+      Endpoint: !Ref DigestNotificationEmail
+
+  SchedulerInvokeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${EnvName}-digest-scheduler-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: invoke-digest-lambda
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt DigestLambdaFunction.Arn
+
+  DigestSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub "${ProjectName}-${EnvName}-digest-daily"
+      Description: Daily task digest at DigestHour in DigestTimezone
+      ScheduleExpression: !Sub "cron(0 ${DigestHour} * * ? *)"
+      ScheduleExpressionTimezone: !Ref DigestTimezone
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: ENABLED
+      Target:
+        Arn: !GetAtt DigestLambdaFunction.Arn
+        RoleArn: !GetAtt SchedulerInvokeRole.Arn
+        RetryPolicy:
+          MaximumRetryAttempts: 2
+
+  DigestLambdaSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DigestLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: scheduler.amazonaws.com
+      SourceArn: !GetAtt DigestSchedule.Arn
+
+Outputs:
+  DigestTopicArn:
+    Description: SNS topic ARN — set SNS_DIGEST_TOPIC_ARN if reusing elsewhere
+    Value: !Ref DigestTopic
+    Export:
+      Name: !Sub "${ProjectName}-${EnvName}-DigestTopicArn"
+
+  DigestLambdaArn:
+    Value: !GetAtt DigestLambdaFunction.Arn
+
+  DigestLambdaName:
+    Value: !Ref DigestLambdaFunction
+
+  DigestScheduleArn:
+    Value: !GetAtt DigestSchedule.Arn
+
+  DigestScheduleExpression:
+    Description: Cron runs at DigestHour in DigestTimezone
+    Value: !Sub "cron(0 ${DigestHour} * * ? *) @ ${DigestTimezone}"

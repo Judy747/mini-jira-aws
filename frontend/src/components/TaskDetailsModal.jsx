@@ -18,7 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Label } from '@/components/ui/label'
 import { TASK_STATUSES, statusLabel, priorityLabel } from '@/lib/constants'
 
-export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
+export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refreshSignal = 0 }) {
   const [task, setTask] = useState(null)
   const [comments, setComments] = useState([])
   const [audit, setAudit] = useState([])
@@ -54,6 +54,28 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
       cancelled = true
     }
   }, [open, taskId])
+
+  useEffect(() => {
+    if (!open || !taskId || refreshSignal === 0) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const [t, auditRows] = await Promise.all([
+          fetchTask(taskId),
+          fetchAuditForTask(taskId).catch(() => []),
+        ])
+        if (!cancelled) {
+          setTask(t)
+          setAudit(auditRows)
+        }
+      } catch {
+        /* non-blocking */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [refreshSignal, open, taskId])
 
   async function addComment() {
     if (!commentText.trim()) return
@@ -203,7 +225,8 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
                     <div key={a.auditId} className="border-l-2 border-primary/50 pl-2 text-sm">
                       <p className="font-medium">{a.changedByName || a.changedBy}</p>
                       <p className="text-muted-foreground">
-                        {statusLabel(a.fromStatus)} → {statusLabel(a.toStatus)}
+                        {a.fromStatus ? statusLabel(a.fromStatus) : 'Created'} →{' '}
+                        {statusLabel(a.toStatus)}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {new Date(a.changedAt).toLocaleString()}

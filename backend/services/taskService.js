@@ -6,7 +6,7 @@ const { publishMetric } = require('./cloudwatchService');
 const { TASK_STATUSES, TASK_PRIORITIES } = require('../utils/constants');
 const { normalizeStatus, normalizePriority, serializeTask } = require('../utils/taskNormalizer');
 const { publishTaskAssignedEvent } = require('./assignmentEvents');
-const { recordStatusChange } = require('./auditService');
+const { recordStatusChange, deleteEntriesForTask } = require('./auditService');
 const { resolveImageFields, deleteTaskImages } = require('./s3Service');
 
 function assertTaskVisible(profile, task) {
@@ -128,6 +128,12 @@ async function createTask(profile, body) {
     updatedAt: now,
   };
   await taskRepo.putTask(item);
+  await recordStatusChange({
+    taskId,
+    changedBy: profile.userId,
+    fromStatus: null,
+    toStatus: st,
+  });
   await publishMetric('TasksCreated', 1);
   if (item.assigneeId) {
     publishTaskAssignedEvent({
@@ -272,6 +278,7 @@ async function removeTask(profile, taskId) {
   if (existing.imageKey) {
     await deleteTaskImages(existing.imageKey);
   }
+  await deleteEntriesForTask(taskId);
   await taskRepo.deleteTask(taskId);
 }
 
