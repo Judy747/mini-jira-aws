@@ -47,6 +47,6 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ message: 'Internal server error' });
 });
 
-app.listen(cfg.port, () => {
+app.listen(cfg.port, "0.0.0.0", () => {
   console.log(`Mini Jira AWS API listening on :${cfg.port}`);
 });
