@@ -7,6 +7,7 @@ const { TASK_STATUSES, TASK_PRIORITIES } = require('../utils/constants');
 const { normalizeStatus, normalizePriority, serializeTask } = require('../utils/taskNormalizer');
 const { publishTaskAssignedEvent } = require('./assignmentEvents');
 const { recordStatusChange } = require('./auditService');
+const { resolveImageFields, deleteTaskImages } = require('./s3Service');
 
 function assertTaskVisible(profile, task) {
   if (!task) throw new AppError('Task not found', 404);
@@ -92,6 +93,8 @@ async function createTask(profile, body) {
     teamId,
     projectId,
     imageUrl,
+    imageKey,
+    thumbnailUrl,
   } = body || {};
 
   if (!title?.trim() || !teamId?.trim() || !projectId?.trim()) {
@@ -106,6 +109,7 @@ async function createTask(profile, body) {
 
   const now = new Date().toISOString();
   const taskId = uuidv4();
+  const images = resolveImageFields({ imageUrl, imageKey, thumbnailUrl });
   const item = {
     taskId,
     title: title.trim(),
@@ -116,7 +120,9 @@ async function createTask(profile, body) {
     assigneeId: assigneeId?.trim() || null,
     teamId: teamId.trim(),
     projectId: projectId.trim(),
-    imageUrl: imageUrl || null,
+    imageKey: images.imageKey,
+    imageUrl: images.imageUrl,
+    thumbnailUrl: images.thumbnailUrl,
     createdBy: profile.userId,
     createdAt: now,
     updatedAt: now,
@@ -151,9 +157,29 @@ async function updateTask(profile, taskId, body) {
   delete patch.deadline;
 
   if (!isPrivileged) {
-    const allowed = ['status', 'imageUrl'];
+    const allowed = ['status', 'imageUrl', 'imageKey', 'thumbnailUrl'];
     for (const k of Object.keys(patch)) {
       if (!allowed.includes(k)) delete patch[k];
+    }
+  }
+
+  if (
+    patch.imageUrl !== undefined ||
+    patch.imageKey !== undefined ||
+    patch.thumbnailUrl !== undefined
+  ) {
+    const merged = resolveImageFields({
+      imageUrl: patch.imageUrl !== undefined ? patch.imageUrl : existing.imageUrl,
+      imageKey: patch.imageKey !== undefined ? patch.imageKey : existing.imageKey,
+      thumbnailUrl:
+        patch.thumbnailUrl !== undefined ? patch.thumbnailUrl : existing.thumbnailUrl,
+    });
+    patch.imageKey = merged.imageKey;
+    patch.imageUrl = merged.imageUrl;
+    patch.thumbnailUrl = merged.thumbnailUrl;
+    if (patch.imageUrl === null) {
+      patch.imageKey = null;
+      patch.thumbnailUrl = null;
     }
   }
 
@@ -178,7 +204,12 @@ async function updateTask(profile, taskId, body) {
     patch.title = String(patch.title).trim();
   }
 
-  if (!isPrivileged && patch.status === undefined && patch.imageUrl === undefined) {
+  if (
+    !isPrivileged &&
+    patch.status === undefined &&
+    patch.imageUrl === undefined &&
+    patch.imageKey === undefined
+  ) {
     throw new AppError('No permitted fields to update', 400);
   }
 
@@ -238,6 +269,9 @@ async function removeTask(profile, taskId) {
   }
   const existing = await taskRepo.getById(taskId);
   assertTaskVisible(profile, existing);
+  if (existing.imageKey) {
+    await deleteTaskImages(existing.imageKey);
+  }
   await taskRepo.deleteTask(taskId);
 }
 
