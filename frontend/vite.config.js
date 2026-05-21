@@ -12,10 +12,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // Backend now mounts every API route under /api (see backend/src/server.js),
+      // so we forward the path unchanged. Do NOT strip the /api prefix here.
       '/api': {
         target: 'http://localhost:4000',
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api/, ''),
       },
     },
   },
