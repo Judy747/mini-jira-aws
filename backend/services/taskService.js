@@ -6,6 +6,7 @@ const { publishMetric } = require('./cloudwatchService');
 const { TASK_STATUSES, TASK_PRIORITIES } = require('../utils/constants');
 const { normalizeStatus, normalizePriority, serializeTask } = require('../utils/taskNormalizer');
 const { publishTaskAssignedEvent } = require('./assignmentEvents');
+const { recordStatusChange } = require('./auditService');
 
 function assertTaskVisible(profile, task) {
   if (!task) throw new AppError('Task not found', 404);
@@ -181,6 +182,8 @@ async function updateTask(profile, taskId, body) {
     throw new AppError('No permitted fields to update', 400);
   }
 
+  const oldStatus = normalizeStatus(existing.status) || existing.status;
+
   if (patch.assigneeId !== undefined) {
     patch.assigneeId = patch.assigneeId?.trim() || null;
   }
@@ -192,6 +195,16 @@ async function updateTask(profile, taskId, body) {
     updatedAt: new Date().toISOString(),
   };
   await taskRepo.putTask(next);
+
+  const newStatus = normalizeStatus(next.status) || next.status;
+  if (patch.status !== undefined && oldStatus !== newStatus) {
+    await recordStatusChange({
+      taskId,
+      changedBy: profile.userId,
+      fromStatus: oldStatus,
+      toStatus: newStatus,
+    });
+  }
 
   const assigneeChanged =
     patch.assigneeId !== undefined &&
@@ -207,9 +220,7 @@ async function updateTask(profile, taskId, body) {
     });
   }
 
-  const prevStatus = normalizeStatus(existing.status) || existing.status;
-  const newStatus = normalizeStatus(next.status) || next.status;
-  if (prevStatus !== 'DONE' && newStatus === 'DONE') {
+  if (oldStatus !== 'DONE' && newStatus === 'DONE') {
     await publishMetric('TasksCompleted', 1);
     await publishMetric(
       'TasksCompletedPerTeam',

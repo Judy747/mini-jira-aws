@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { api } from '@/services/api'
 import { fetchTask, updateTask } from '@/services/tasksService'
+import { fetchAuditForTask } from '@/services/auditService'
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,7 @@ import { TASK_STATUSES, statusLabel, priorityLabel } from '@/lib/constants'
 export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
   const [task, setTask] = useState(null)
   const [comments, setComments] = useState([])
+  const [audit, setAudit] = useState([])
   const [loading, setLoading] = useState(false)
   const [commentText, setCommentText] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -29,13 +31,15 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
     ;(async () => {
       setLoading(true)
       try {
-        const [t, cRes] = await Promise.all([
+        const [t, cRes, auditRows] = await Promise.all([
           fetchTask(taskId),
           api.get(`/comments/${taskId}`),
+          fetchAuditForTask(taskId).catch(() => []),
         ])
         if (!cancelled) {
           setTask(t)
           setComments(cRes.data)
+          setAudit(auditRows)
         }
       } catch (e) {
         if (!cancelled) toast.error(e.response?.data?.message || 'Failed to load task')
@@ -87,10 +91,21 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
     }
   }
 
+  async function reloadAudit() {
+    if (!taskId) return
+    try {
+      const rows = await fetchAuditForTask(taskId)
+      setAudit(rows)
+    } catch {
+      /* non-blocking */
+    }
+  }
+
   async function changeStatus(status) {
     try {
       const updated = await updateTask(taskId, { status })
       setTask(updated)
+      await reloadAudit()
       toast.success('Status updated')
       onUpdated?.()
     } catch (e) {
@@ -159,6 +174,26 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
             <div className="space-y-2">
               <Label htmlFor="attach">Image attachment</Label>
               <input id="attach" type="file" accept="image/*" onChange={onPickFile} disabled={uploading} />
+            </div>
+            <div className="space-y-2 border-t border-border pt-4">
+              <Label>Audit Timeline</Label>
+              <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border border-border p-2">
+                {audit.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No status changes recorded yet.</p>
+                ) : (
+                  audit.map((a) => (
+                    <div key={a.auditId} className="border-l-2 border-primary/50 pl-2 text-sm">
+                      <p className="font-medium">{a.changedByName || a.changedBy}</p>
+                      <p className="text-muted-foreground">
+                        {statusLabel(a.fromStatus)} → {statusLabel(a.toStatus)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(a.changedAt).toLocaleString()}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
             <div className="space-y-2 border-t border-border pt-4">
               <Label>Comments</Label>

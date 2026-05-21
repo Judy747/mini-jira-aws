@@ -36,6 +36,7 @@ function loadEnv() {
       projects: process.env.DYNAMODB_PROJECTS_TABLE || 'mini-jira-projects',
       tasks: process.env.DYNAMODB_TASKS_TABLE || 'mini-jira-tasks',
       comments: process.env.DYNAMODB_COMMENTS_TABLE || 'mini-jira-comments',
+      statusAudit: process.env.DYNAMODB_STATUS_AUDIT_TABLE || 'StatusAudit',
     },
     s3: {
       bucket: process.env.S3_BUCKET_NAME || '',
