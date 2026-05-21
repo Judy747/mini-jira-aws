@@ -65,7 +65,7 @@ The API now returns Cognito’s message in the JSON body (not only “Internal s
 | Comments | `GET /comments/:taskId`, `POST /comments` |
 | Audit | `GET /audit/:taskId` — status change history (newest first) |
 | Directory | `GET /users` (manager/admin), `GET /teams`, `POST /teams` (admin), `POST /users` (admin) |
-| Uploads | `POST /uploads/presign` — returns `{ uploadUrl, key, publicUrl }` |
+| Uploads | `POST /uploads/presign` — returns `{ method: "PUT", uploadUrl, key, publicUrl, thumbnailUrl }` (optional `taskId` for stable S3 key) |
 
 All routes except `/auth/*` and `/health` require a valid **Cognito ID token** (`Authorization: Bearer <idToken>`).
 
@@ -99,7 +99,7 @@ All routes except `/auth/*` and `/health` require a valid **Cognito ID token** (
 | Attribute | Type | Key |
 |-----------|------|-----|
 | `taskId` | String | **PK** |
-| `title`, `description`, `priority`, `status`, `dueDate`, `assigneeId`, `teamId`, `projectId`, `createdBy`, `imageUrl`, `createdAt`, `updatedAt` | mixed | — |
+| `title`, `description`, `priority`, `status`, `dueDate`, `assigneeId`, `teamId`, `projectId`, `createdBy`, `imageKey`, `imageUrl`, `thumbnailUrl`, `createdAt`, `updatedAt` | mixed | — |
 
 **Status values:** `TODO`, `IN_PROGRESS`, `IN_REVIEW`, `DONE` (legacy `To Do` / `In Progress` labels are normalized on read).
 
@@ -126,6 +126,10 @@ Written automatically when a task status changes via `PUT /tasks/:id` or Kanban 
 | `taskId` | String | **PK** |
 | `commentId` | String (UUID) | **SK** |
 | `text`, `authorId`, `authorName`, `createdAt` | String | — |
+
+## S3 image pipeline (Marwan)
+
+Dual-bucket uploads (originals + resized thumbnails), presigned browser PUT, and resize Lambda. See **[docs/S3_IMAGE_PIPELINE.md](docs/S3_IMAGE_PIPELINE.md)** for keys, delete behavior, CORS, and AWS setup checklist.
 
 ## Status audit & daily digest (Kenzy)
 

@@ -29,6 +29,9 @@ function serializeTask(item) {
     priority,
     dueDate: item.dueDate ?? item.deadline ?? null,
     createdBy: item.createdBy ?? item.ownerId ?? null,
+    imageKey: item.imageKey ?? null,
+    imageUrl: item.imageUrl ?? null,
+    thumbnailUrl: item.thumbnailUrl ?? null,
   };
 }
 

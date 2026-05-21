@@ -15,6 +15,7 @@ import {
   priorityLabel,
   priorityVariant,
 } from '@/lib/constants'
+import { taskImageSrc } from '@/lib/images'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -130,6 +131,14 @@ export function KanbanPage() {
                                           {priorityLabel(task.priority)}
                                         </Badge>
                                       </div>
+                                      {taskImageSrc(task) && (
+                                        <img
+                                          src={taskImageSrc(task)}
+                                          alt=""
+                                          className="mt-2 h-14 w-full rounded object-cover"
+                                          loading="lazy"
+                                        />
+                                      )}
                                       <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
                                         <span className="inline-flex items-center gap-1">
                                           <User className="h-3 w-3" />

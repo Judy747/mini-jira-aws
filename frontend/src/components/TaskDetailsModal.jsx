@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { api } from '@/services/api'
 import { fetchTask, updateTask } from '@/services/tasksService'
 import { fetchAuditForTask } from '@/services/auditService'
+import { taskImageSrc, uploadTaskImage } from '@/lib/images'
 import {
   Dialog,
   DialogContent,
@@ -24,12 +25,14 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
   const [loading, setLoading] = useState(false)
   const [commentText, setCommentText] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [thumbError, setThumbError] = useState(false)
 
   useEffect(() => {
     if (!open || !taskId) return
     let cancelled = false
     ;(async () => {
       setLoading(true)
+      setThumbError(false)
       try {
         const [t, cRes, auditRows] = await Promise.all([
           fetchTask(taskId),
@@ -69,22 +72,15 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
     const file = e.target.files?.[0]
     if (!file || !taskId) return
     setUploading(true)
+    setThumbError(false)
     try {
-      const { data: presign } = await api.post('/uploads/presign', {
-        filename: file.name,
-        contentType: file.type || 'application/octet-stream',
-      })
-      await fetch(presign.uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': file.type || 'application/octet-stream' },
-        body: file,
-      })
-      const updated = await updateTask(taskId, { imageUrl: presign.publicUrl })
+      const images = await uploadTaskImage({ api, file, taskId })
+      const updated = await updateTask(taskId, images)
       setTask(updated)
-      toast.success('Attachment saved')
+      toast.success('Attachment saved — thumbnail may take a few seconds')
       onUpdated?.()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Upload failed')
+      toast.error(err.response?.data?.message || err.message || 'Upload failed')
     } finally {
       setUploading(false)
       e.target.value = ''
@@ -112,6 +108,8 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
       toast.error(e.response?.data?.message || 'Update failed')
     }
   }
+
+  const previewSrc = task ? taskImageSrc(task) : null
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -150,10 +148,29 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
                 <div className="font-mono">{task.assigneeId || '—'}</div>
               </div>
             </div>
-            {task.imageUrl && (
-              <a href={task.imageUrl} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline">
-                View attachment
-              </a>
+            {previewSrc && (
+              <div className="space-y-2">
+                <Label className="text-foreground">Attachment</Label>
+                {!thumbError ? (
+                  <a href={task.imageUrl || previewSrc} target="_blank" rel="noreferrer">
+                    <img
+                      src={previewSrc}
+                      alt="Task attachment"
+                      className="max-h-48 w-full rounded-md border border-border object-contain bg-muted/30"
+                      onError={() => setThumbError(true)}
+                    />
+                  </a>
+                ) : (
+                  <a
+                    href={task.imageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm text-primary hover:underline"
+                  >
+                    View full image
+                  </a>
+                )}
+              </div>
             )}
             <div className="space-y-2">
               <Label className="text-foreground">Status</Label>
@@ -174,6 +191,7 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
             <div className="space-y-2">
               <Label htmlFor="attach">Image attachment</Label>
               <input id="attach" type="file" accept="image/*" onChange={onPickFile} disabled={uploading} />
+              {uploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
             </div>
             <div className="space-y-2 border-t border-border pt-4">
               <Label>Audit Timeline</Label>
