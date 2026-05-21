@@ -39,8 +39,14 @@ function loadEnv() {
       statusAudit: process.env.DYNAMODB_STATUS_AUDIT_TABLE || 'StatusAudit',
     },
     s3: {
+      /** Originals bucket (versioning on in AWS) */
+      originalsBucket: process.env.S3_BUCKET_NAME || '',
+      originalsPublicBaseUrl: process.env.S3_PUBLIC_BASE_URL || '',
+      /** Thumbnails bucket (written by image-resize Lambda) */
+      resizedBucket: process.env.S3_RESIZED_BUCKET_NAME || '',
+      resizedPublicBaseUrl: process.env.S3_RESIZED_PUBLIC_BASE_URL || '',
+      /** @deprecated use originalsBucket — kept for older references */
       bucket: process.env.S3_BUCKET_NAME || '',
-      /** Public base URL for objects if bucket is public or behind CloudFront */
       publicBaseUrl: process.env.S3_PUBLIC_BASE_URL || '',
     },
     corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',

@@ -1,15 +1,29 @@
-const { getPresignedPutUrl, publicObjectUrl } = require('../services/s3Service');
-const { v4: uuidv4 } = require('uuid');
+const {
+  getPresignedPutUrl,
+  publicOriginalUrl,
+  publicThumbnailUrl,
+  buildUploadKey,
+} = require('../services/s3Service');
 const { AppError } = require('../utils/errors');
 
 async function presign(req, res, next) {
   try {
-    const { filename, contentType } = req.body || {};
+    const { filename, contentType, taskId } = req.body || {};
     if (!filename) throw new AppError('filename is required');
-    const safe = String(filename).replace(/[^a-zA-Z0-9._-]/g, '_');
-    const key = `attachments/${req.auth.profile.userId}/${uuidv4()}-${safe}`;
-    const uploadUrl = await getPresignedPutUrl({ key, contentType });
-    res.json({ uploadUrl, key, publicUrl: publicObjectUrl(key) });
+    const key = buildUploadKey({
+      taskId,
+      userId: req.auth.profile.userId,
+      filename,
+    });
+    const { uploadUrl, method } = await getPresignedPutUrl({ key, contentType });
+    const thumbnailUrl = publicThumbnailUrl(key);
+    res.json({
+      method,
+      uploadUrl,
+      key,
+      publicUrl: publicOriginalUrl(key),
+      thumbnailUrl,
+    });
   } catch (e) {
     next(e);
   }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { fetchProjects } from '@/services/projectsService'
-import { createTask } from '@/services/tasksService'
+import { createTask, updateTask } from '@/services/tasksService'
 import { api } from '@/services/api'
 import {
   Dialog,
@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { TASK_PRIORITIES, priorityLabel } from '@/lib/constants'
+import { uploadTaskImage } from '@/lib/images'
 
 export function CreateTaskDialog({ teams, onCreated }) {
   const [open, setOpen] = useState(false)
@@ -35,6 +36,7 @@ export function CreateTaskDialog({ teams, onCreated }) {
   const [projects, setProjects] = useState([])
   const [users, setUsers] = useState([])
   const [busy, setBusy] = useState(false)
+  const [imageFile, setImageFile] = useState(null)
 
   useEffect(() => {
     if (!open || !teamId) {
@@ -80,7 +82,7 @@ export function CreateTaskDialog({ teams, onCreated }) {
     }
     setBusy(true)
     try {
-      await createTask({
+      const created = await createTask({
         title,
         description,
         priority,
@@ -89,6 +91,14 @@ export function CreateTaskDialog({ teams, onCreated }) {
         teamId,
         projectId,
       })
+      if (imageFile) {
+        const images = await uploadTaskImage({
+          api,
+          file: imageFile,
+          taskId: created.taskId,
+        })
+        await updateTask(created.taskId, images)
+      }
       toast.success('Task created')
       setOpen(false)
       setTitle('')
@@ -98,6 +108,7 @@ export function CreateTaskDialog({ teams, onCreated }) {
       setAssigneeId('')
       setTeamId('')
       setProjectId('')
+      setImageFile(null)
       onCreated?.()
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to create task')
@@ -175,6 +186,15 @@ export function CreateTaskDialog({ teams, onCreated }) {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="ct-image">Image (optional)</Label>
+            <input
+              id="ct-image"
+              type="file"
+              accept="image/*"
+              onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+            />
           </div>
           <div className="space-y-2">
             <Label>Project</Label>
