@@ -27,6 +27,12 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/api/auth', authRoutes);
 
+// Allow OPTIONS preflight requests through without auth
+app.options('*', cors({
+  origin: cfg.corsOrigin,
+  credentials: true,
+}));
+
 app.use(authMiddleware);
 app.get('/api/auth/me', (req, res) => res.json(req.auth.profile));
 app.use('/api/tasks', taskRoutes);
