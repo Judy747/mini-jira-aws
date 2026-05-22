@@ -109,7 +109,11 @@ All routes except `/auth/*` and `/health` require a valid **Cognito ID token** (
 
 **GSI `AssigneeTasksIndex`:** PK = `assigneeId`, SK = `taskId` (optional “my work” views; sparse if `assigneeId` absent).
 
+<<<<<<< HEAD
+### `StatusAudit` (`DYNAMODB_STATUS_AUDIT_TABLE`, default table name `StatusAudit`)
+=======
 ### `mini-jira-status-audit` (`DYNAMODB_STATUS_AUDIT_TABLE`)
+>>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 
 | Attribute | Type | Key |
 |-----------|------|-----|
@@ -117,9 +121,13 @@ All routes except `/auth/*` and `/health` require a valid **Cognito ID token** (
 | `auditId` | String (UUID) | **SK** |
 | `changedBy`, `fromStatus`, `toStatus`, `changedAt` | String | — |
 
+<<<<<<< HEAD
+Written automatically when a task status changes via `PUT /tasks/:id` or Kanban drag-and-drop.
+=======
 Written automatically when a task is created (initial status) or when status changes via `PUT /tasks/:id` or Kanban drag-and-drop. Rows are deleted when the task is deleted.
 
 **Provision:** `aws cloudformation deploy --template-file infra/dynamodb-status-audit.yaml --stack-name mini-jira-status-audit --parameter-overrides ProjectName=mini-jira` or `node backend/scripts/create-status-audit-table.js`.
+>>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 
 ### `Comments` (`DYNAMODB_COMMENTS_TABLE`)
 
@@ -136,6 +144,11 @@ Dual-bucket uploads (originals + resized thumbnails), presigned browser PUT, and
 ## Status audit & daily digest (Kenzy)
 
 - **Audit API:** `GET /audit/:taskId` (Bearer token; same access rules as viewing the task).
+<<<<<<< HEAD
+- **DynamoDB:** Create table `StatusAudit` with PK `taskId`, SK `auditId` (on-demand billing is fine for free tier).
+- **Env:** `DYNAMODB_STATUS_AUDIT_TABLE=StatusAudit` (optional; this is the default).
+- **Digest Lambda:** `backend/lambda/digestLambda.js` — deploy as a Lambda, set `TOPIC_ARN` to an SNS topic with email subscription, trigger daily at 9 AM with EventBridge rule `cron(0 9 * * ? *)`.
+=======
 - **DynamoDB:** Table `mini-jira-status-audit` (PK `taskId`, SK `auditId`). Deploy `infra/dynamodb-status-audit.yaml` or run `node backend/scripts/create-status-audit-table.js`.
 - **Env:** `DYNAMODB_STATUS_AUDIT_TABLE=mini-jira-status-audit` (required; matches EC2 IAM `mini-jira-*` pattern).
 
@@ -169,6 +182,7 @@ aws cloudformation deploy \
 ```
 
 **Lambda env:** `SNS_DIGEST_TOPIC_ARN`, `DYNAMODB_TASKS_TABLE`, `DYNAMODB_USERS_TABLE`, `DIGEST_TIMEZONE` (set by the stack). Confirm the SNS email subscription in your inbox after deploy.
+>>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 
 ## Drag and drop
 
