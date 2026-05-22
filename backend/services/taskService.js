@@ -71,6 +71,25 @@ function parseDueDate(body) {
 }
 
 /**
+ * Employees may only be assigned to tasks on their own team.
+ */
+async function assertAssigneeMatchesTeam(taskTeamId, assigneeId) {
+  if (!assigneeId) return;
+  const user = await userRepo.getById(assigneeId);
+  if (!user) throw new AppError('Assignee not found', 404);
+  if (user.role !== 'EMPLOYEE') {
+    throw new AppError('Only employees can be assigned to tasks', 400);
+  }
+  if (!user.teamId || user.teamId !== taskTeamId) {
+    const who = user.name || user.email || 'User';
+    throw new AppError(
+      `${who} is not on this task's team and cannot be assigned`,
+      400
+    );
+  }
+}
+
+/**
  * Tasks that are not done and have a due date strictly before now (UTC).
  * Uses normalized status so legacy rows (e.g. "Done") still behave correctly.
  */
@@ -172,6 +191,7 @@ async function createTask(profile, body) {
     createdAt: now,
     updatedAt: now,
   };
+  await assertAssigneeMatchesTeam(item.teamId, item.assigneeId);
   await taskRepo.putTask(item);
   await recordStatusChange({
     taskId,
@@ -276,6 +296,9 @@ async function updateTask(profile, taskId, body) {
     taskId,
     updatedAt: new Date().toISOString(),
   };
+  if (patch.assigneeId !== undefined || patch.teamId !== undefined) {
+    await assertAssigneeMatchesTeam(next.teamId, next.assigneeId);
+  }
   await taskRepo.putTask(next);
 
   const newStatus = normalizeStatus(next.status) || next.status;
