@@ -38,6 +38,7 @@ function loadEnv() {
       tasks: process.env.DYNAMODB_TASKS_TABLE || 'mini-jira-tasks',
       comments: process.env.DYNAMODB_COMMENTS_TABLE || 'mini-jira-comments',
       statusAudit: process.env.DYNAMODB_STATUS_AUDIT_TABLE || 'mini-jira-status-audit',
+      activityLog: process.env.DYNAMODB_ACTIVITY_LOG_TABLE || 'mini-jira-activity-log',
     },
     s3: {
       /** Originals bucket (versioning on in AWS) */
@@ -51,7 +52,7 @@ function loadEnv() {
       publicBaseUrl: process.env.S3_PUBLIC_BASE_URL || '',
     },
     corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
-    /** Task-assignment fan-out (SNS → email + SQS → worker Lambda) */
+    /** Task-assignment fan-out (SNS → SQS → worker Lambda) */
     snsTaskAssignmentTopicArn: process.env.SNS_TASK_ASSIGNMENT_TOPIC_ARN || '',
   };
 }

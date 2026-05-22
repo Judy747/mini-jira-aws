@@ -133,6 +133,68 @@ Written automatically when a task is created (initial status) or when status cha
 
 Dual-bucket uploads (originals + resized thumbnails), presigned browser PUT, and resize Lambda. See **[docs/S3_IMAGE_PIPELINE.md](docs/S3_IMAGE_PIPELINE.md)** for keys, delete behavior, CORS, and AWS setup checklist.
 
+## Task assignment pipeline (SNS + SQS + Lambda)
+
+When a manager assigns a task, the API publishes to SNS; the topic fans out to **email** and **SQS**; the worker Lambda writes **`mini-jira-activity-log`** and publishes **`TasksAssignedPerTeam`** in CloudWatch namespace `MiniJira`.
+
+| Piece | Location |
+|-------|----------|
+| API publish | `backend/services/assignmentEvents.js` — env `SNS_TASK_ASSIGNMENT_TOPIC_ARN` |
+| Trigger | `backend/services/taskService.js` — on create with assignee or assignee change |
+| Worker | `backend/lambda/assignmentWorker/` |
+| IaC | `infra/assignment-pipeline.yaml`, `infra/dynamodb-activity-log.yaml` |
+| Verify in app | `GET /api/activity` (manager) — Dashboard “Assignment events” card |
+
+**Deploy (new stack):**
+
+```bash
+# Activity table (skip if mini-jira-activity-log already exists)
+aws cloudformation deploy \
+  --stack-name mini-jira-activity-log \
+  --template-file infra/dynamodb-activity-log.yaml
+
+bash backend/scripts/package-assignment-worker.sh
+aws s3 cp backend/lambda/assignmentWorker.zip s3://YOUR-DEPLOY-BUCKET/lambda/assignmentWorker.zip
+
+aws cloudformation deploy \
+  --stack-name mini-jira-assignment \
+  --template-file infra/assignment-pipeline.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+      NotificationEmail=you@example.com \
+      LambdaCodeS3Bucket=YOUR-DEPLOY-BUCKET \
+      LambdaCodeS3Key=lambda/assignmentWorker.zip
+```
+
+Set `SNS_TASK_ASSIGNMENT_TOPIC_ARN` to the stack output `AssignmentTopicArn` (or `arn:aws:sns:...:mini-jira-task-assignments` if you already created the topic).
+
+**Update worker code only (existing AWS resources):**
+
+```bash
+bash backend/scripts/package-assignment-worker.sh
+aws lambda update-function-code \
+  --function-name mini-jira-assignment-worker \
+  --zip-file fileb://backend/lambda/assignmentWorker.zip
+
+# Gmail SMTP for dynamic assignee emails (App Password, not regular password)
+aws lambda update-function-configuration \
+  --function-name mini-jira-assignment-worker \
+  --environment "Variables={DYNAMODB_ACTIVITY_LOG_TABLE=mini-jira-activity-log,CLOUDWATCH_NAMESPACE=MiniJira,EMAIL_USER=your@gmail.com,EMAIL_PASS=your-gmail-app-password}"
+```
+
+**Lambda environment variables:**
+
+| Variable | Purpose |
+|----------|---------|
+| `DYNAMODB_ACTIVITY_LOG_TABLE` | Activity log table (default `mini-jira-activity-log`) |
+| `CLOUDWATCH_NAMESPACE` | Metric namespace (default `MiniJira`) |
+| `EMAIL_USER` | Gmail address used to send mail |
+| `EMAIL_PASS` | Gmail **App Password** ([Google Account → Security → App passwords](https://myaccount.google.com/apppasswords)) |
+
+Architecture unchanged: **Backend → SNS → SQS → Lambda** (email is sent inside the worker, not via SNS email subscription).
+
+**Verify:** assign a task as manager → backend `[assignmentEvents] SNS publish succeeded` → Lambda `Saved activity` → CloudWatch metric `TasksAssignedPerTeam`. Optional assignee email: configure Gmail on the worker Lambda (`EMAIL_USER` / `EMAIL_PASS` above) or use an SNS email subscription on the topic.
+
 ## Status audit & daily digest (Kenzy)
 
 - **Audit API:** `GET /audit/:taskId` (Bearer token; same access rules as viewing the task).

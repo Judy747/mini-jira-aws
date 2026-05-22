@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { api } from '@/services/api'
+import { useAuth } from '@/context/AuthContext'
+import { useUsers } from '@/hooks/useUsers'
 import { fetchTask, updateTask } from '@/services/tasksService'
 import { fetchAuditForTask } from '@/services/auditService'
 import { taskImageSrc, uploadTaskImage } from '@/lib/images'
@@ -16,9 +18,18 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { TASK_STATUSES, statusLabel, priorityLabel } from '@/lib/constants'
 
 export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refreshSignal = 0 }) {
+  const { isManager } = useAuth()
+  const { users, displayName } = useUsers()
   const [task, setTask] = useState(null)
   const [comments, setComments] = useState([])
   const [audit, setAudit] = useState([])
@@ -131,6 +142,19 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
     }
   }
 
+  async function changeAssignee(assigneeId) {
+    const nextId = assigneeId || null
+    if (task?.assigneeId === nextId) return
+    try {
+      const updated = await updateTask(taskId, { assigneeId: nextId })
+      setTask(updated)
+      toast.success(nextId ? 'Assignee updated' : 'Task unassigned')
+      onUpdated?.()
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to update assignee')
+    }
+  }
+
   const previewSrc = task ? taskImageSrc(task) : null
 
   return (
@@ -167,7 +191,26 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
               </div>
               <div>
                 <span className="font-medium text-foreground">Assignee</span>
-                <div className="font-mono">{task.assigneeId || '—'}</div>
+                {isManager ? (
+                  <Select
+                    value={task.assigneeId || '_none'}
+                    onValueChange={(v) => changeAssignee(v === '_none' ? null : v)}
+                  >
+                    <SelectTrigger className="mt-1 h-8">
+                      <SelectValue placeholder="Unassigned" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">Unassigned</SelectItem>
+                      {users.map((u) => (
+                        <SelectItem key={u.userId} value={u.userId}>
+                          {u.name || u.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div>{displayName(task.assigneeId)}</div>
+                )}
               </div>
             </div>
             {previewSrc && (

@@ -247,6 +247,18 @@ async function updateTask(profile, taskId, body) {
     patch.assigneeId !== undefined &&
     next.assigneeId &&
     next.assigneeId !== existing.assigneeId;
+  if (patch.assigneeId !== undefined && !assigneeChanged) {
+    console.log('[taskService] assignee update did not trigger SNS', {
+      taskId,
+      previousAssigneeId: existing.assigneeId || null,
+      nextAssigneeId: next.assigneeId || null,
+      reason: !next.assigneeId
+        ? 'cleared_or_unassigned'
+        : next.assigneeId === existing.assigneeId
+          ? 'unchanged'
+          : 'unknown',
+    });
+  }
   if (assigneeChanged) {
     publishTaskAssignedEvent({
       taskId: next.taskId,
