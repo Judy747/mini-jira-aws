@@ -6,7 +6,7 @@
  *
  *   sudo -u miniapp git fetch origin
  *   sudo -u miniapp git reset --hard origin/main
- *   sudo -u miniapp npm --prefix backend ci --omit=dev
+ *   sudo -u miniapp npm --prefix backend install --omit=dev
  *   sudo systemctl restart mini-jira
  *
  * Then it polls each command invocation until they all complete, prints
@@ -68,7 +68,9 @@ function buildDeployScript(branch) {
     'echo "[deploy] host=$(hostname) branch=$BRANCH at $(date -u)"',
     'sudo -u "$APP_USER" git -C "$APP_DIR" fetch origin --prune',
     'sudo -u "$APP_USER" git -C "$APP_DIR" reset --hard "origin/$BRANCH"',
-    'sudo -u "$APP_USER" --preserve-env=HOME bash -lc "cd \'$APP_DIR/backend\' && npm ci --omit=dev --no-fund --no-audit"',
+    // Use `npm install` (not `npm ci`) so we keep working when teammates merge
+    // PRs that touch backend/package.json without regenerating package-lock.json.
+    'sudo -u "$APP_USER" --preserve-env=HOME bash -lc "cd \'$APP_DIR/backend\' && npm install --omit=dev --no-fund --no-audit"',
     'systemctl restart mini-jira.service',
     'sleep 2',
     'systemctl is-active mini-jira.service',
