@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { api } from '@/services/api'
-<<<<<<< HEAD
-import { fetchTask, updateTask } from '@/services/tasksService'
-import { fetchAuditForTask } from '@/services/auditService'
-=======
-import { fetchTask, updateTask, deleteTask } from '@/services/tasksService'
+
+import {
+  fetchTask,
+  updateTask,
+  deleteTask,
+} from '@/services/tasksService'
+
 import { fetchAuditForTask } from '@/services/auditService'
 import { fetchProjects } from '@/services/projectsService'
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
+
 import { taskImageSrc, uploadTaskImage } from '@/lib/images'
+
 import {
   Dialog,
   DialogContent,
@@ -17,20 +20,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+
 import { Button } from '@/components/ui/button'
-<<<<<<< HEAD
-=======
 import { Input } from '@/components/ui/input'
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Label } from '@/components/ui/label'
-<<<<<<< HEAD
-import { TASK_STATUSES, statusLabel, priorityLabel } from '@/lib/constants'
 
-export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated }) {
-=======
 import {
   Select,
   SelectContent,
@@ -38,12 +35,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+
 import {
   TASK_STATUSES,
   TASK_PRIORITIES,
   statusLabel,
   priorityLabel,
 } from '@/lib/constants'
+
 import { useAuth } from '@/context/AuthContext'
 import { useTeams } from '@/hooks/useTeams'
 
@@ -70,7 +69,6 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
   const { isManager } = useAuth()
   const { teams } = useTeams()
 
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
   const [task, setTask] = useState(null)
   const [comments, setComments] = useState([])
   const [audit, setAudit] = useState([])
@@ -79,8 +77,6 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
   const [uploading, setUploading] = useState(false)
   const [thumbError, setThumbError] = useState(false)
 
-<<<<<<< HEAD
-=======
   // edit-mode state (managers only)
   const [editMode, setEditMode] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
@@ -89,17 +85,13 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
   const [projects, setProjects] = useState([])
   const [deleting, setDeleting] = useState(false)
 
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
   useEffect(() => {
     if (!open || !taskId) return
     let cancelled = false
     ;(async () => {
       setLoading(true)
       setThumbError(false)
-<<<<<<< HEAD
-=======
       setEditMode(false)
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
       try {
         const [t, cRes, auditRows] = await Promise.all([
           fetchTask(taskId),
@@ -122,8 +114,6 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
     }
   }, [open, taskId])
 
-<<<<<<< HEAD
-=======
   useEffect(() => {
     if (!open || !taskId || refreshSignal === 0) return
     let cancelled = false
@@ -183,7 +173,6 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
     }
   }, [editMode, draft?.teamId])
 
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
   async function addComment() {
     if (!commentText.trim()) return
     try {
@@ -238,8 +227,6 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
     }
   }
 
-<<<<<<< HEAD
-=======
   function startEdit() {
     if (!task) return
     setDraft({
@@ -319,7 +306,6 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
     }
   }
 
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
   const previewSrc = task ? taskImageSrc(task) : null
 
   return (
@@ -336,31 +322,6 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
           </div>
         ) : (
           <div className="space-y-4">
-<<<<<<< HEAD
-            <div className="flex flex-wrap gap-2">
-              <Badge>{priorityLabel(task.priority)}</Badge>
-              <Badge variant="secondary">{statusLabel(task.status)}</Badge>
-            </div>
-            <p className="whitespace-pre-wrap text-sm text-muted-foreground">{task.description}</p>
-            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-              <div>
-                <span className="font-medium text-foreground">Due date</span>
-                <div>{task.dueDate ? new Date(task.dueDate).toLocaleString() : '—'}</div>
-              </div>
-              <div>
-                <span className="font-medium text-foreground">Team</span>
-                <div className="font-mono">{task.teamId}</div>
-              </div>
-              <div>
-                <span className="font-medium text-foreground">Project</span>
-                <div className="font-mono">{task.projectId}</div>
-              </div>
-              <div>
-                <span className="font-medium text-foreground">Assignee</span>
-                <div className="font-mono">{task.assigneeId || '—'}</div>
-              </div>
-            </div>
-=======
             {isManager && !editMode && (
               <div className="flex justify-end gap-2">
                 <Button type="button" size="sm" variant="outline" onClick={startEdit}>
@@ -542,7 +503,6 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
               </>
             )}
 
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
             {previewSrc && (
               <div className="space-y-2">
                 <Label className="text-foreground">Attachment</Label>
@@ -598,12 +558,8 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
                     <div key={a.auditId} className="border-l-2 border-primary/50 pl-2 text-sm">
                       <p className="font-medium">{a.changedByName || a.changedBy}</p>
                       <p className="text-muted-foreground">
-<<<<<<< HEAD
-                        {statusLabel(a.fromStatus)} → {statusLabel(a.toStatus)}
-=======
                         {a.fromStatus ? statusLabel(a.fromStatus) : 'Created'} →{' '}
                         {statusLabel(a.toStatus)}
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {new Date(a.changedAt).toLocaleString()}
