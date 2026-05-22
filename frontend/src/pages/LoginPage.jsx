@@ -41,11 +41,7 @@ export function LoginPage() {
       toast.success('Welcome back')
       navigate(from, { replace: true })
     } catch (err) {
-<<<<<<< HEAD
-      toast.error(err.message || err.response?.data?.message || 'Login failed')
-=======
       toast.error(err.response?.data?.message || err.message || 'Login failed')
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
     } finally {
       setBusy(false)
     }
