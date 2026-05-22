@@ -5,7 +5,8 @@ import {
   Columns3,
   UserCircle,
   LogOut,
-  Sparkles,
+  Check,
+  Shield,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
@@ -26,17 +27,17 @@ const linkClass = ({ isActive }) =>
   )
 
 export function MainLayout() {
-  const { profile, logout } = useAuth()
+  const { profile, logout, isAdmin } = useAuth()
 
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[240px_1fr]">
       <aside className="border-b border-border bg-card/40 lg:border-b-0 lg:border-r">
         <div className="flex items-center gap-2 px-5 py-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
-            <Sparkles className="h-5 w-5" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-700 text-white shadow-sm">
+            <Check className="h-5 w-5" strokeWidth={3} />
           </div>
           <div>
-            <p className="text-sm font-semibold leading-tight">Mini Jira AWS</p>
+            <p className="text-sm font-semibold leading-tight">Mini Jira</p>
             <p className="text-xs text-muted-foreground">Cloud task management</p>
           </div>
         </div>
@@ -57,6 +58,12 @@ export function MainLayout() {
             <UserCircle className="h-4 w-4" />
             Profile
           </NavLink>
+          {isAdmin && (
+            <NavLink to="/admin" className={linkClass}>
+              <Shield className="h-4 w-4" />
+              Admin
+            </NavLink>
+          )}
         </nav>
       </aside>
       <div className="flex min-h-screen flex-col">
