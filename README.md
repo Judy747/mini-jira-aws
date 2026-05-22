@@ -1,6 +1,15 @@
 # Mini Jira AWS
 
+**Live site:** **<https://d2qic2nqco9xo5.cloudfront.net>**
+(Open in any browser — no extra setup required.)
+
+**Architecture diagram:** [`docs/architecture.png`](docs/architecture.png) (AWS standard icons; see `docs/ARCHITECTURE.md` for the component-by-component walkthrough).
+
 Cloud task management (Jira/Trello-style) with a **React + Vite** frontend, **Express** backend, **Amazon DynamoDB**, **Cognito** authentication, and **S3** image uploads. Team isolation for employees is **enforced in the API**, not only in the UI.
+
+## High-availability architecture (one-liner)
+
+Browser → **CloudFront** (S3 frontend at `/*`, ALB at `/api/*`) → **Application Load Balancer** (`/health`) → **Auto Scaling Group** of EC2 (Node/Express) across **2 AZs in private subnets** behind a **NAT** → **DynamoDB** (Users/Teams/Projects/Tasks/Comments/StatusAudit/ActivityLog with GSIs on `teamId` & `assigneeId`) + **S3 originals** (versioned, presigned PUT) → **Lambda image-resize** writes to **S3 resized** → **Cognito** issues JWTs verified per request. Assignments fan out via **SNS → SQS → Lambda worker** → DynamoDB activity log + **CloudWatch** custom metric `TasksAssignedPerTeam`. **EventBridge Scheduler** triggers a daily 9 AM digest Lambda → SNS email. **CloudWatch dashboard + alarm** monitor overdue tasks and EC2 CPU.
 
 ## Repository layout
 
