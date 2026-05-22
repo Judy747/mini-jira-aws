@@ -8,6 +8,7 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { ProjectsPage } from '@/pages/ProjectsPage'
 import { KanbanPage } from '@/pages/KanbanPage'
 import { ProfilePage } from '@/pages/ProfilePage'
+import { AdminPage } from '@/pages/AdminPage'
 
 export function AppRoutes() {
   return (
@@ -21,6 +22,7 @@ export function AppRoutes() {
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="board" element={<KanbanPage />} />
           <Route path="profile" element={<ProfilePage />} />
+          <Route path="admin" element={<AdminPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
