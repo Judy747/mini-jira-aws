@@ -39,6 +39,10 @@
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "tailwindcss-animate": "^1.0.7",
+<<<<<<< HEAD
+=======
+    "typescript": "^6.0.3",
+>>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
     "vite": "^6.3.4"
   }
 }

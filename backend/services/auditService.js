@@ -43,4 +43,12 @@ async function listEntriesForTask(taskId) {
   );
 }
 
+<<<<<<< HEAD
 module.exports = { recordStatusChange, listEntriesForTask };
+=======
+async function deleteEntriesForTask(taskId) {
+  await auditRepo.deleteByTask(taskId);
+}
+
+module.exports = { recordStatusChange, listEntriesForTask, deleteEntriesForTask };
+>>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c

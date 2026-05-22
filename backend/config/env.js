@@ -13,6 +13,10 @@ const required = [
   'DYNAMODB_PROJECTS_TABLE',
   'DYNAMODB_TASKS_TABLE',
   'DYNAMODB_COMMENTS_TABLE',
+<<<<<<< HEAD
+=======
+  'DYNAMODB_STATUS_AUDIT_TABLE',
+>>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
   'S3_BUCKET_NAME',
 ];
 
@@ -36,7 +40,11 @@ function loadEnv() {
       projects: process.env.DYNAMODB_PROJECTS_TABLE || 'mini-jira-projects',
       tasks: process.env.DYNAMODB_TASKS_TABLE || 'mini-jira-tasks',
       comments: process.env.DYNAMODB_COMMENTS_TABLE || 'mini-jira-comments',
+<<<<<<< HEAD
       statusAudit: process.env.DYNAMODB_STATUS_AUDIT_TABLE || 'StatusAudit',
+=======
+      statusAudit: process.env.DYNAMODB_STATUS_AUDIT_TABLE || 'mini-jira-status-audit',
+>>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
     },
     s3: {
       /** Originals bucket (versioning on in AWS) */

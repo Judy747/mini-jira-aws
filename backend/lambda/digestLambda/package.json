@@ -1,0 +1,15 @@
+{
+  "name": "mini-jira-digest-lambda",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EventBridge-scheduled daily digest: tasks due today grouped by assignee, sent via SNS",
+  "main": "index.js",
+  "scripts": {
+    "zip": "npm ci --omit=dev && powershell Compress-Archive -Path * -DestinationPath ../digestLambda.zip -Force"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.787.0",
+    "@aws-sdk/client-sns": "^3.787.0",
+    "@aws-sdk/lib-dynamodb": "^3.787.0"
+  }
+}
