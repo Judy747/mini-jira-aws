@@ -8,6 +8,7 @@ async function listByTask(taskId) {
   const r = await docClient.send(
     new QueryCommand({
       TableName: table,
+      IndexName: 'taskId-index',
       KeyConditionExpression: 'taskId = :t',
       ExpressionAttributeValues: { ':t': taskId },
       ScanIndexForward: true,
