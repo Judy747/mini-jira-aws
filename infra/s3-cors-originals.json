@@ -3,8 +3,8 @@
     "AllowedHeaders": ["*"],
     "AllowedMethods": ["GET", "PUT", "HEAD"],
     "AllowedOrigins": [
-      "http://localhost:5173",
-      "https://YOUR_CLOUDFRONT_DOMAIN.cloudfront.net"
+      "https://d2qic2nqco9xo5.cloudfront.net",
+      "http://localhost:5173"
     ],
     "ExposeHeaders": ["ETag"],
     "MaxAgeSeconds": 3000
