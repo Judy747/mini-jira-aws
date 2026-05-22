@@ -144,7 +144,7 @@ export function KanbanPage() {
                                       <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
                                         <span className="inline-flex items-center gap-1">
                                           <User className="h-3 w-3" />
-                                          {displayName(task.assigneeId)}
+                                          {task.assigneeName || displayName(task.assigneeId)}
                                         </span>
                                         <span className="inline-flex items-center gap-1">
                                           <Calendar className="h-3 w-3" />

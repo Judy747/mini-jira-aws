@@ -1,6 +1,8 @@
 const { v4: uuidv4 } = require('uuid');
 const taskRepo = require('./taskRepository');
 const teamRepo = require('./teamRepository');
+const projectRepo = require('./projectRepository');
+const userRepo = require('./userRepository');
 const { AppError } = require('../utils/errors');
 const { publishMetric } = require('./cloudwatchService');
 const { TASK_STATUSES, TASK_PRIORITIES } = require('../utils/constants');
@@ -8,6 +10,49 @@ const { normalizeStatus, normalizePriority, serializeTask } = require('../utils/
 const { publishTaskAssignedEvent } = require('./assignmentEvents');
 const { recordStatusChange, deleteEntriesForTask } = require('./auditService');
 const { resolveImageFields, deleteTaskImages } = require('./s3Service');
+
+/**
+ * Resolve teamId/projectId/assigneeId on each task to human-readable names
+ * (teamName, projectName, assigneeName) in a single pass. Used so the UI never
+ * has to render raw UUIDs for the user.
+ */
+async function enrichTasksWithNames(tasks) {
+  if (!tasks || tasks.length === 0) return tasks;
+  const teamIds = new Set();
+  const projectIds = new Set();
+  const userIds = new Set();
+  for (const t of tasks) {
+    if (t.teamId) teamIds.add(t.teamId);
+    if (t.projectId) projectIds.add(t.projectId);
+    if (t.assigneeId) userIds.add(t.assigneeId);
+  }
+  const [teamRows, projectRows, userRows] = await Promise.all([
+    Promise.all([...teamIds].map((id) => teamRepo.getById(id).catch(() => null))),
+    Promise.all([...projectIds].map((id) => projectRepo.getById(id).catch(() => null))),
+    Promise.all([...userIds].map((id) => userRepo.getById(id).catch(() => null))),
+  ]);
+  const teamMap = Object.fromEntries(
+    teamRows.filter(Boolean).map((x) => [x.teamId, x.name])
+  );
+  const projectMap = Object.fromEntries(
+    projectRows.filter(Boolean).map((x) => [x.projectId, x.name])
+  );
+  const userMap = Object.fromEntries(
+    userRows.filter(Boolean).map((x) => [x.userId, x.name || x.email || x.userId])
+  );
+  return tasks.map((t) => ({
+    ...t,
+    teamName: t.teamId ? teamMap[t.teamId] || null : null,
+    projectName: t.projectId ? projectMap[t.projectId] || null : null,
+    assigneeName: t.assigneeId ? userMap[t.assigneeId] || null : null,
+  }));
+}
+
+async function enrichTaskWithNames(task) {
+  if (!task) return task;
+  const [out] = await enrichTasksWithNames([task]);
+  return out;
+}
 
 function assertTaskVisible(profile, task) {
   if (!task) throw new AppError('Task not found', 404);
@@ -71,13 +116,13 @@ async function listTasks(profile, { teamId: queryTeamId, projectId, status } = {
   if (normalizedStatus) {
     items = items.filter((t) => normalizeStatus(t.status) === normalizedStatus);
   }
-  return items.map(serializeTask);
+  return enrichTasksWithNames(items.map(serializeTask));
 }
 
 async function getTask(profile, taskId) {
   const task = await taskRepo.getById(taskId);
   assertTaskVisible(profile, task);
-  return serializeTask(task);
+  return enrichTaskWithNames(serializeTask(task));
 }
 
 async function createTask(profile, body) {
@@ -144,7 +189,7 @@ async function createTask(profile, body) {
       assignedBy: profile.userId,
     });
   }
-  return serializeTask(item);
+  return enrichTaskWithNames(serializeTask(item));
 }
 
 async function updateTask(profile, taskId, body) {
@@ -278,7 +323,7 @@ async function updateTask(profile, taskId, body) {
     );
   }
 
-  return serializeTask(next);
+  return enrichTaskWithNames(serializeTask(next));
 }
 
 async function removeTask(profile, taskId) {
