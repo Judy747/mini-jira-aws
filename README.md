@@ -109,11 +109,7 @@ All routes except `/auth/*` and `/health` require a valid **Cognito ID token** (
 
 **GSI `AssigneeTasksIndex`:** PK = `assigneeId`, SK = `taskId` (optional “my work” views; sparse if `assigneeId` absent).
 
-<<<<<<< HEAD
-### `StatusAudit` (`DYNAMODB_STATUS_AUDIT_TABLE`, default table name `StatusAudit`)
-=======
 ### `mini-jira-status-audit` (`DYNAMODB_STATUS_AUDIT_TABLE`)
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 
 | Attribute | Type | Key |
 |-----------|------|-----|
@@ -121,13 +117,9 @@ All routes except `/auth/*` and `/health` require a valid **Cognito ID token** (
 | `auditId` | String (UUID) | **SK** |
 | `changedBy`, `fromStatus`, `toStatus`, `changedAt` | String | — |
 
-<<<<<<< HEAD
-Written automatically when a task status changes via `PUT /tasks/:id` or Kanban drag-and-drop.
-=======
 Written automatically when a task is created (initial status) or when status changes via `PUT /tasks/:id` or Kanban drag-and-drop. Rows are deleted when the task is deleted.
 
 **Provision:** `aws cloudformation deploy --template-file infra/dynamodb-status-audit.yaml --stack-name mini-jira-status-audit --parameter-overrides ProjectName=mini-jira` or `node backend/scripts/create-status-audit-table.js`.
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 
 ### `Comments` (`DYNAMODB_COMMENTS_TABLE`)
 
@@ -141,14 +133,71 @@ Written automatically when a task is created (initial status) or when status cha
 
 Dual-bucket uploads (originals + resized thumbnails), presigned browser PUT, and resize Lambda. See **[docs/S3_IMAGE_PIPELINE.md](docs/S3_IMAGE_PIPELINE.md)** for keys, delete behavior, CORS, and AWS setup checklist.
 
+## Task assignment pipeline (SNS + SQS + Lambda)
+
+When a manager assigns a task, the API publishes to SNS; the topic fans out to **email** and **SQS**; the worker Lambda writes **`mini-jira-activity-log`** and publishes **`TasksAssignedPerTeam`** in CloudWatch namespace `MiniJira`.
+
+| Piece | Location |
+|-------|----------|
+| API publish | `backend/services/assignmentEvents.js` — env `SNS_TASK_ASSIGNMENT_TOPIC_ARN` |
+| Trigger | `backend/services/taskService.js` — on create with assignee or assignee change |
+| Worker | `backend/lambda/assignmentWorker/` |
+| IaC | `infra/assignment-pipeline.yaml`, `infra/dynamodb-activity-log.yaml` |
+| Verify in app | `GET /api/activity` (manager) — Dashboard “Assignment events” card |
+
+**Deploy (new stack):**
+
+```bash
+# Activity table (skip if mini-jira-activity-log already exists)
+aws cloudformation deploy \
+  --stack-name mini-jira-activity-log \
+  --template-file infra/dynamodb-activity-log.yaml
+
+bash backend/scripts/package-assignment-worker.sh
+aws s3 cp backend/lambda/assignmentWorker.zip s3://YOUR-DEPLOY-BUCKET/lambda/assignmentWorker.zip
+
+aws cloudformation deploy \
+  --stack-name mini-jira-assignment \
+  --template-file infra/assignment-pipeline.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+      NotificationEmail=you@example.com \
+      LambdaCodeS3Bucket=YOUR-DEPLOY-BUCKET \
+      LambdaCodeS3Key=lambda/assignmentWorker.zip
+```
+
+Set `SNS_TASK_ASSIGNMENT_TOPIC_ARN` to the stack output `AssignmentTopicArn` (or `arn:aws:sns:...:mini-jira-task-assignments` if you already created the topic).
+
+**Update worker code only (existing AWS resources):**
+
+```bash
+bash backend/scripts/package-assignment-worker.sh
+aws lambda update-function-code \
+  --function-name mini-jira-assignment-worker \
+  --zip-file fileb://backend/lambda/assignmentWorker.zip
+
+# Gmail SMTP for dynamic assignee emails (App Password, not regular password)
+aws lambda update-function-configuration \
+  --function-name mini-jira-assignment-worker \
+  --environment "Variables={DYNAMODB_ACTIVITY_LOG_TABLE=mini-jira-activity-log,CLOUDWATCH_NAMESPACE=MiniJira,EMAIL_USER=your@gmail.com,EMAIL_PASS=your-gmail-app-password}"
+```
+
+**Lambda environment variables:**
+
+| Variable | Purpose |
+|----------|---------|
+| `DYNAMODB_ACTIVITY_LOG_TABLE` | Activity log table (default `mini-jira-activity-log`) |
+| `CLOUDWATCH_NAMESPACE` | Metric namespace (default `MiniJira`) |
+| `EMAIL_USER` | Gmail address used to send mail |
+| `EMAIL_PASS` | Gmail **App Password** ([Google Account → Security → App passwords](https://myaccount.google.com/apppasswords)) |
+
+Architecture unchanged: **Backend → SNS → SQS → Lambda** (email is sent inside the worker, not via SNS email subscription).
+
+**Verify:** assign a task as manager → backend `[assignmentEvents] SNS publish succeeded` → Lambda `Saved activity` → CloudWatch metric `TasksAssignedPerTeam`. Optional assignee email: configure Gmail on the worker Lambda (`EMAIL_USER` / `EMAIL_PASS` above) or use an SNS email subscription on the topic.
+
 ## Status audit & daily digest (Kenzy)
 
 - **Audit API:** `GET /audit/:taskId` (Bearer token; same access rules as viewing the task).
-<<<<<<< HEAD
-- **DynamoDB:** Create table `StatusAudit` with PK `taskId`, SK `auditId` (on-demand billing is fine for free tier).
-- **Env:** `DYNAMODB_STATUS_AUDIT_TABLE=StatusAudit` (optional; this is the default).
-- **Digest Lambda:** `backend/lambda/digestLambda.js` — deploy as a Lambda, set `TOPIC_ARN` to an SNS topic with email subscription, trigger daily at 9 AM with EventBridge rule `cron(0 9 * * ? *)`.
-=======
 - **DynamoDB:** Table `mini-jira-status-audit` (PK `taskId`, SK `auditId`). Deploy `infra/dynamodb-status-audit.yaml` or run `node backend/scripts/create-status-audit-table.js`.
 - **Env:** `DYNAMODB_STATUS_AUDIT_TABLE=mini-jira-status-audit` (required; matches EC2 IAM `mini-jira-*` pattern).
 
@@ -182,7 +231,6 @@ aws cloudformation deploy \
 ```
 
 **Lambda env:** `SNS_DIGEST_TOPIC_ARN`, `DYNAMODB_TASKS_TABLE`, `DYNAMODB_USERS_TABLE`, `DIGEST_TIMEZONE` (set by the stack). Confirm the SNS email subscription in your inbox after deploy.
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 
 ## Drag and drop
 

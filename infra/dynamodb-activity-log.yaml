@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Activity log for task assignments (written by assignment worker Lambda).
+  PK activityId — one row per assignment event.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: mini-jira
+  TableName:
+    Type: String
+    Default: ""
+    Description: Override table name. Leave blank for ${ProjectName}-activity-log.
+
+Conditions:
+  UseDefaultTableName: !Equals [!Ref TableName, ""]
+
+Resources:
+  ActivityLogTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If
+        - UseDefaultTableName
+        - !Sub "${ProjectName}-activity-log"
+        - !Ref TableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: activityId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: activityId
+          KeyType: HASH
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-activity-log"
+
+Outputs:
+  ActivityLogTableName:
+    Value: !Ref ActivityLogTable
+  ActivityLogTableArn:
+    Value: !GetAtt ActivityLogTable.Arn

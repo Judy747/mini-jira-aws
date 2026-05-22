@@ -23,10 +23,7 @@ You need these values **before** you deploy. Collect them in a scratch pad:
 | DynamoDB table names      | Judy           | `mini-jira-users`, `-teams`, `-projects`, `-tasks`, `-comments` |
 | S3 attachments bucket     | uploads owner  | `mini-jira-attachments-<account>`          |
 | SNS topic ARN (optional)  | notifications  | `arn:aws:sns:us-east-1:...:mini-jira-events` |
-<<<<<<< HEAD
-=======
 | Digest email (optional)   | Kenzy digest   | `you@team.edu` — confirms SNS subscription |
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 
 You also need, on the machine you deploy from:
 
@@ -57,6 +54,7 @@ Done in the **AWS Console or CLI**, not from this repo:
    /mini-jira/prod/DYNAMODB_COMMENTS_TABLE(String)
    /mini-jira/prod/S3_BUCKET_NAME         (String)
    /mini-jira/prod/S3_PUBLIC_BASE_URL     (String)   # optional, CloudFront URL of attachments
+   /mini-jira/prod/SNS_TASK_ASSIGNMENT_TOPIC_ARN (String)  # e.g. arn:aws:sns:...:mini-jira-task-assignments
    /mini-jira/prod/CORS_ORIGIN            (String)   # fill in AFTER step 3 with the CloudFront URL
    ```
 
@@ -116,32 +114,31 @@ Tell Judy to add that same URL to the Cognito App Client's
 ## 4. Deploy the frontend
 
 The frontend build is published to the S3 bucket created by the stack, then
-CloudFront is invalidated. Everything runs through the AWS SDK (no AWS CLI
-required), so it works the same on Windows, Mac, and Linux.
+CloudFront is invalidated.
 
-From the repo root (PowerShell):
+PowerShell (Windows, the way Kenzy works locally):
 
 ```powershell
-cd frontend
-./deploy.ps1
+$env:S3_BUCKET           = "mini-jira-prod-frontend-<account>"
+$env:CLOUDFRONT_DIST_ID  = "EXXXXXXXXXXXX"
+$env:AWS_REGION          = "us-east-1"
+$env:VITE_API_URL        = "/api"   # same-origin via CloudFront behavior
+./infra/deploy-frontend.ps1
 ```
 
-That script calls `backend/scripts/deploy-frontend.js`, which:
-
-1. Runs `npm ci` and `npm run build` in `frontend/`.
-2. Uploads `frontend/dist/` to the S3 bucket (hashed assets with
-   `max-age=31536000,immutable`, `index.html` with `no-cache`).
-3. Deletes stale objects no longer in the build.
-4. Creates a CloudFront invalidation for `/*`.
-
-Config lives in `backend/.env` (`S3_BUCKET_FRONTEND`,
-`CLOUDFRONT_DISTRIBUTION_ID`, `AWS_REGION`, `VITE_API_URL=/api`). On Mac/Linux
-you can run the Node script directly:
+Bash (CI / Mac / Linux):
 
 ```bash
-cd frontend && npm ci && npm run build
-node ../backend/scripts/deploy-frontend.js
+export S3_BUCKET=mini-jira-prod-frontend-<account>
+export CLOUDFRONT_DIST_ID=EXXXXXXXXXXXX
+export AWS_REGION=us-east-1
+export VITE_API_URL=/api
+./infra/deploy-frontend.sh
 ```
+
+Both scripts: `npm ci` → `npm run build` → `aws s3 sync` (hashed assets with
+`max-age=31536000,immutable`, `index.html` with `no-cache`) → CloudFront
+invalidation of `/` and `/index.html`.
 
 ---
 
@@ -263,10 +260,33 @@ aws ssm start-session --target i-0123456789abcdef0
 
 ---
 
-<<<<<<< HEAD
-## 9. File map
-=======
-## 9. Daily digest Lambda (EventBridge + SNS)
+## 9. Task assignment pipeline (SNS → SQS → worker)
+
+See [`infra/assignment-pipeline.yaml`](infra/assignment-pipeline.yaml) and [`backend/lambda/assignmentWorker/`](backend/lambda/assignmentWorker/).
+
+1. Ensure `SNS_TASK_ASSIGNMENT_TOPIC_ARN` is in SSM (same prefix as other params) and in local `backend/.env`.
+2. If the topic/queue/Lambda **already exist** in AWS, refresh worker code and email env:
+
+   ```bash
+   bash backend/scripts/package-assignment-worker.sh
+   aws lambda update-function-code \
+     --function-name mini-jira-assignment-worker \
+     --zip-file fileb://backend/lambda/assignmentWorker.zip
+
+   aws lambda update-function-configuration \
+     --function-name mini-jira-assignment-worker \
+     --environment "Variables={DYNAMODB_ACTIVITY_LOG_TABLE=mini-jira-activity-log,CLOUDWATCH_NAMESPACE=MiniJira,EMAIL_USER=your@gmail.com,EMAIL_PASS=your-gmail-app-password}"
+   ```
+
+   Use a Gmail **App Password** for `EMAIL_PASS`. The worker sends to `assigneeEmail` from each assignment event (Nodemailer → `smtp.gmail.com:587`).
+
+3. Greenfield deploy: package zip → S3 → `aws cloudformation deploy` with `infra/assignment-pipeline.yaml` (see README).
+
+**Smoke test:** manager changes assignee → EC2/journal `[assignmentEvents] SNS publish succeeded` → CloudWatch log group `/aws/lambda/mini-jira-assignment-worker` shows `Saved activity` → `GET /api/activity` returns the row.
+
+---
+
+## 10. Daily digest Lambda (EventBridge + SNS)
 
 Separate stack: [`infra/digest-lambda.yaml`](infra/digest-lambda.yaml). Runs daily at **9:00** in `DigestTimezone` (default `UTC`; use e.g. `Africa/Cairo` for local 9 AM).
 
@@ -294,20 +314,15 @@ Confirm the SNS email subscription, then test: `aws lambda invoke --function-nam
 ---
 
 ## 10. File map
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 
 | Path                              | What it does                                                  |
 | --------------------------------- | ------------------------------------------------------------- |
 | `infra/cloudformation.yaml`       | Full stack: VPC, ALB, ASG, IAM, S3, CloudFront.               |
-<<<<<<< HEAD
+| `infra/assignment-pipeline.yaml`  | Assignment SNS, SQS, worker Lambda, subscriptions.            |
+| `infra/dynamodb-activity-log.yaml`| Activity log table for assignment worker.                     |
+| `backend/lambda/assignmentWorker/`| SQS consumer → activity log + `TasksAssignedPerTeam`.        |
+| `infra/digest-lambda.yaml`        | Digest SNS topic, Lambda, EventBridge Scheduler (9 AM).       |
 | `infra/user-data.sh`              | Runs on every EC2 boot; installs deps and starts the backend. |
 | `infra/deploy-frontend.sh` / `.ps1` | Builds the React app and publishes to S3 + invalidates CF.  |
 | `backend/src/server.js`           | Already exposes `GET /health` for the ALB target group.       |
-=======
-| `infra/digest-lambda.yaml`        | Digest SNS topic, Lambda, EventBridge Scheduler (9 AM).       |
-| `infra/user-data.sh`              | Runs on every EC2 boot; installs deps and starts the backend. |
-| `frontend/deploy.ps1` + `backend/scripts/deploy-frontend.js` | Builds the React app and publishes to S3 + invalidates CloudFront (AWS SDK, no AWS CLI). |
-| `backend/deploy-backend.ps1` + `backend/scripts/deploy-backend.js` | Triggers a `git pull` + `npm ci` + `systemctl restart mini-jira` on every EC2 instance in the ASG via SSM Run Command. |
-| `backend/src/server.js`           | Already exposes `GET /health` for the ALB target group.       |
 | `backend/lambda/digestLambda/`    | Daily digest: tasks due today → SNS email.                    |
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
