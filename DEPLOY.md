@@ -23,7 +23,10 @@ You need these values **before** you deploy. Collect them in a scratch pad:
 | DynamoDB table names      | Judy           | `mini-jira-users`, `-teams`, `-projects`, `-tasks`, `-comments` |
 | S3 attachments bucket     | uploads owner  | `mini-jira-attachments-<account>`          |
 | SNS topic ARN (optional)  | notifications  | `arn:aws:sns:us-east-1:...:mini-jira-events` |
+<<<<<<< HEAD
+=======
 | Digest email (optional)   | Kenzy digest   | `you@team.edu` — confirms SNS subscription |
+>>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 
 You also need, on the machine you deploy from:
 
@@ -259,6 +262,9 @@ aws ssm start-session --target i-0123456789abcdef0
 
 ---
 
+<<<<<<< HEAD
+## 9. File map
+=======
 ## 9. Daily digest Lambda (EventBridge + SNS)
 
 Separate stack: [`infra/digest-lambda.yaml`](infra/digest-lambda.yaml). Runs daily at **9:00** in `DigestTimezone` (default `UTC`; use e.g. `Africa/Cairo` for local 9 AM).
@@ -287,12 +293,19 @@ Confirm the SNS email subscription, then test: `aws lambda invoke --function-nam
 ---
 
 ## 10. File map
+>>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 
 | Path                              | What it does                                                  |
 | --------------------------------- | ------------------------------------------------------------- |
 | `infra/cloudformation.yaml`       | Full stack: VPC, ALB, ASG, IAM, S3, CloudFront.               |
+<<<<<<< HEAD
+| `infra/user-data.sh`              | Runs on every EC2 boot; installs deps and starts the backend. |
+| `infra/deploy-frontend.sh` / `.ps1` | Builds the React app and publishes to S3 + invalidates CF.  |
+| `backend/src/server.js`           | Already exposes `GET /health` for the ALB target group.       |
+=======
 | `infra/digest-lambda.yaml`        | Digest SNS topic, Lambda, EventBridge Scheduler (9 AM).       |
 | `infra/user-data.sh`              | Runs on every EC2 boot; installs deps and starts the backend. |
 | `infra/deploy-frontend.sh` / `.ps1` | Builds the React app and publishes to S3 + invalidates CF.  |
 | `backend/src/server.js`           | Already exposes `GET /health` for the ALB target group.       |
 | `backend/lambda/digestLambda/`    | Daily digest: tasks due today → SNS email.                    |
+>>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
