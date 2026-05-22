@@ -9,7 +9,14 @@
     "moduleResolution": "bundler",
     "target": "ES2022",
     "checkJs": true,
+<<<<<<< HEAD
     "resolveJsonModule": true
   },
   "include": ["src"]
+=======
+    "resolveJsonModule": true,
+    "allowJs": true
+  },
+  "include": ["src/**/*.js", "src/**/*.jsx", "src/**/*.ts", "src/**/*.tsx"]
+>>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 }
