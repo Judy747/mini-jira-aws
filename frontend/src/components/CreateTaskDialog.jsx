@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { TASK_PRIORITIES, priorityLabel } from '@/lib/constants'
+import { assigneesForTeam } from '@/lib/assignees'
 import { uploadTaskImage } from '@/lib/images'
 
 export function CreateTaskDialog({ teams, onCreated }) {
@@ -37,6 +38,14 @@ export function CreateTaskDialog({ teams, onCreated }) {
   const [users, setUsers] = useState([])
   const [busy, setBusy] = useState(false)
   const [imageFile, setImageFile] = useState(null)
+  const teamAssignees = assigneesForTeam(users, teamId)
+
+  useEffect(() => {
+    if (!assigneeId) return
+    if (!teamId || !teamAssignees.some((u) => u.userId === assigneeId)) {
+      setAssigneeId('')
+    }
+  }, [teamId, users, assigneeId, teamAssignees])
 
   useEffect(() => {
     if (!open || !teamId) {
@@ -158,19 +167,26 @@ export function CreateTaskDialog({ teams, onCreated }) {
           </div>
           <div className="space-y-2">
             <Label>Assignee</Label>
-            <Select value={assigneeId || '_none'} onValueChange={(v) => setAssigneeId(v === '_none' ? '' : v)}>
+            <Select
+              value={assigneeId || '_none'}
+              onValueChange={(v) => setAssigneeId(v === '_none' ? '' : v)}
+              disabled={!teamId}
+            >
               <SelectTrigger>
-                <SelectValue placeholder="Unassigned" />
+                <SelectValue placeholder={teamId ? 'Unassigned' : 'Select a team first'} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="_none">Unassigned</SelectItem>
-                {users.map((u) => (
+                {teamAssignees.map((u) => (
                   <SelectItem key={u.userId} value={u.userId}>
                     {u.name || u.email}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {teamId && teamAssignees.length === 0 && (
+              <p className="text-xs text-muted-foreground">No employees on this team yet.</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label>Team</Label>

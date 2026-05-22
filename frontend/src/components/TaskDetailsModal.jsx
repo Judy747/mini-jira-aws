@@ -11,6 +11,7 @@ import {
 import { fetchAuditForTask } from '@/services/auditService'
 import { fetchProjects } from '@/services/projectsService'
 
+import { assigneesForTeam } from '@/lib/assignees'
 import { taskImageSrc, uploadTaskImage } from '@/lib/images'
 
 import {
@@ -84,6 +85,7 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
   const [users, setUsers] = useState([])
   const [projects, setProjects] = useState([])
   const [deleting, setDeleting] = useState(false)
+  const teamAssignees = assigneesForTeam(users, draft?.teamId)
 
   useEffect(() => {
     if (!open || !taskId) return
@@ -406,33 +408,46 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
                 </div>
                 <div className="space-y-2">
                   <Label>Assignee</Label>
-                  <Select
-                    value={draft.assigneeId || '_none'}
-                    onValueChange={(v) =>
-                      setDraft({ ...draft, assigneeId: v === '_none' ? '' : v })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Unassigned" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none">Unassigned</SelectItem>
-                      {users.map((u) => (
-                        <SelectItem key={u.userId} value={u.userId}>
-                          {u.name || u.email}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    <Select
+                      value={draft.assigneeId || '_none'}
+                      onValueChange={(v) =>
+                        setDraft({ ...draft, assigneeId: v === '_none' ? '' : v })
+                      }
+                      disabled={!draft.teamId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={draft.teamId ? 'Unassigned' : 'Select a team first'}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_none">Unassigned</SelectItem>
+                        {teamAssignees.map((u) => (
+                          <SelectItem key={u.userId} value={u.userId}>
+                            {u.name || u.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {draft.teamId && teamAssignees.length === 0 && (
+                      <p className="text-xs text-muted-foreground">No employees on this team yet.</p>
+                    )}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Team</Label>
                     <Select
                       value={draft.teamId}
-                      onValueChange={(v) =>
-                        setDraft({ ...draft, teamId: v, projectId: '' })
-                      }
+                      onValueChange={(v) => {
+                        const next = { ...draft, teamId: v, projectId: '' }
+                        if (
+                          draft.assigneeId &&
+                          !assigneesForTeam(users, v).some((u) => u.userId === draft.assigneeId)
+                        ) {
+                          next.assigneeId = ''
+                        }
+                        setDraft(next)
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select team" />
