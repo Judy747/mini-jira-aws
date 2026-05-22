@@ -489,15 +489,15 @@ export function TaskDetailsModal({ taskId, open, onOpenChange, onUpdated, refres
                   </div>
                   <div>
                     <span className="font-medium text-foreground">Team</span>
-                    <div className="font-mono">{task.teamId}</div>
+                    <div>{task.teamName || '—'}</div>
                   </div>
                   <div>
                     <span className="font-medium text-foreground">Project</span>
-                    <div className="font-mono">{task.projectId}</div>
+                    <div>{task.projectName || '—'}</div>
                   </div>
                   <div>
                     <span className="font-medium text-foreground">Assignee</span>
-                    <div className="font-mono">{task.assigneeId || '—'}</div>
+                    <div>{task.assigneeName || (task.assigneeId ? 'Unknown user' : 'Unassigned')}</div>
                   </div>
                 </div>
               </>

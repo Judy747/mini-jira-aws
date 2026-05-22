@@ -10,7 +10,7 @@ export function ProjectCard({ project, teamName, isManager, onEdit, onDelete }) 
         <CardTitle className="flex items-start justify-between gap-2">
           <span>{project.name}</span>
           <Badge variant="outline" className="shrink-0 text-[10px]">
-            {teamName || project.teamId?.slice(0, 8)}
+            {teamName || 'Unknown team'}
           </Badge>
         </CardTitle>
       </CardHeader>
