@@ -1,0 +1,205 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Task assignment event pipeline: SNS topic → email + SQS → worker Lambda
+  → DynamoDB activity log + CloudWatch TasksAssignedPerTeam metric.
+  Express API publishes to the topic (SNS_TASK_ASSIGNMENT_TOPIC_ARN).
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: mini-jira
+
+  EnvName:
+    Type: String
+    Default: prod
+
+  ActivityLogTableName:
+    Type: String
+    Default: mini-jira-activity-log
+
+  AssignmentTopicName:
+    Type: String
+    Default: mini-jira-task-assignments
+    Description: SNS topic name (must match SNS_TASK_ASSIGNMENT_TOPIC_ARN suffix).
+
+  AssignmentQueueName:
+    Type: String
+    Default: mini-jira-assignment-queue
+
+  WorkerFunctionName:
+    Type: String
+    Default: mini-jira-assignment-worker
+
+  NotificationEmail:
+    Type: String
+    Default: ""
+    Description: Optional email for SNS subscription (confirm via inbox).
+
+  LambdaCodeS3Bucket:
+    Type: String
+    Default: ""
+    Description: S3 bucket with assignmentWorker.zip. Leave blank for placeholder code.
+
+  LambdaCodeS3Key:
+    Type: String
+    Default: lambda/assignmentWorker.zip
+
+  EmailUser:
+    Type: String
+    Default: ""
+    Description: Gmail address for Nodemailer (Lambda EMAIL_USER). Use App Password for EMAIL_PASS.
+
+  EmailPass:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Gmail App Password (Lambda EMAIL_PASS). Leave blank to set in console after deploy.
+
+Conditions:
+  HasNotificationEmail: !Not [!Equals [!Ref NotificationEmail, ""]]
+  HasLambdaCode: !Not [!Equals [!Ref LambdaCodeS3Bucket, ""]]
+
+Resources:
+  AssignmentTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Ref AssignmentTopicName
+      DisplayName: Mini Jira Task Assignments
+
+  AssignmentQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref AssignmentQueueName
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 1209600
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt AssignmentDLQ.Arn
+        maxReceiveCount: 5
+
+  AssignmentDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AssignmentQueueName}-dlq"
+      MessageRetentionPeriod: 1209600
+
+  AssignmentQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref AssignmentQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowSNSPublish
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt AssignmentQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref AssignmentTopic
+
+  AssignmentQueueSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AssignmentTopic
+      Protocol: sqs
+      Endpoint: !GetAtt AssignmentQueue.Arn
+      RawMessageDelivery: false
+
+  AssignmentEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasNotificationEmail
+    Properties:
+      TopicArn: !Ref AssignmentTopic
+      Protocol: email
+      Endpoint: !Ref NotificationEmail
+
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-${EnvName}-assignment-worker-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: assignment-worker-policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: DynamoActivityWrite
+                Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource:
+                  - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ActivityLogTableName}"
+              - Sid: CloudWatchMetrics
+                Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: "*"
+              - Sid: SqsConsume
+                Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt AssignmentQueue.Arn
+
+  AssignmentWorker:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref WorkerFunctionName
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Timeout: 30
+      MemorySize: 128
+      Role: !GetAtt WorkerRole.Arn
+      Code: !If
+        - HasLambdaCode
+        - S3Bucket: !Ref LambdaCodeS3Bucket
+          S3Key: !Ref LambdaCodeS3Key
+        - ZipFile: |
+            exports.handler = async () => ({
+              ok: false,
+              message: 'Upload assignmentWorker.zip (see README assignment pipeline).',
+            });
+      Environment:
+        Variables:
+          DYNAMODB_ACTIVITY_LOG_TABLE: !Ref ActivityLogTableName
+          CLOUDWATCH_NAMESPACE: MiniJira
+          EMAIL_USER: !Ref EmailUser
+          EMAIL_PASS: !Ref EmailPass
+
+  AssignmentWorkerEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt AssignmentQueue.Arn
+      FunctionName: !Ref AssignmentWorker
+      BatchSize: 1
+      Enabled: true
+
+Outputs:
+  AssignmentTopicArn:
+    Description: Set SNS_TASK_ASSIGNMENT_TOPIC_ARN in backend .env / SSM
+    Value: !Ref AssignmentTopic
+    Export:
+      Name: !Sub "${ProjectName}-${EnvName}-AssignmentTopicArn"
+
+  AssignmentQueueUrl:
+    Value: !Ref AssignmentQueue
+
+  AssignmentQueueArn:
+    Value: !GetAtt AssignmentQueue.Arn
+
+  AssignmentWorkerArn:
+    Value: !GetAtt AssignmentWorker.Arn
+
+  AssignmentWorkerName:
+    Value: !Ref AssignmentWorker
