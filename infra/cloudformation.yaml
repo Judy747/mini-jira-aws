@@ -524,7 +524,7 @@ Outputs:
     Value: !GetAtt LoadBalancer.DNSName
 
   FrontendBucketName:
-    Description: S3 bucket holding the built React app. Use with deploy-frontend.sh.
+    Description: S3 bucket holding the built React app. Use with frontend/deploy.ps1 (backend/scripts/deploy-frontend.js).
     Value: !Ref FrontendBucket
 
   AutoScalingGroupName:
