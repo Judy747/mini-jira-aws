@@ -53,7 +53,10 @@ function loadEnv() {
     },
     corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
     /** Task-assignment fan-out (SNS → SQS → worker Lambda) */
-    snsTaskAssignmentTopicArn: process.env.SNS_TASK_ASSIGNMENT_TOPIC_ARN || '',
+    snsTaskAssignmentTopicArn:
+      process.env.SNS_TASK_ASSIGNMENT_TOPIC_ARN ||
+      process.env.SNS_TOPIC_ARN ||
+      '',
   };
 }
 

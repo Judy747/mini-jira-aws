@@ -6,7 +6,6 @@ import { TaskDetailsModal } from '@/components/TaskDetailsModal'
 import { CreateTaskDialog } from '@/components/CreateTaskDialog'
 import { useTeams } from '@/hooks/useTeams'
 import { fetchTaskSummary } from '@/services/tasksService'
-import { fetchAssignmentActivity } from '@/services/activityService'
 import { statusLabel, priorityLabel } from '@/lib/constants'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -21,7 +20,6 @@ export function DashboardPage() {
   const [stats, setStats] = useState(null)
   const [recentTasks, setRecentTasks] = useState([])
   const [recentActivity, setRecentActivity] = useState([])
-  const [assignmentActivity, setAssignmentActivity] = useState([])
   const [loading, setLoading] = useState(true)
   const [modalId, setModalId] = useState(null)
 
@@ -34,16 +32,6 @@ export function DashboardPage() {
       setStats(data.stats)
       setRecentTasks(data.recentTasks || [])
       setRecentActivity(data.recentActivity || [])
-      if (isManager) {
-        try {
-          const rows = await fetchAssignmentActivity({ limit: 10 })
-          setAssignmentActivity(rows)
-        } catch {
-          setAssignmentActivity([])
-        }
-      } else {
-        setAssignmentActivity([])
-      }
     } catch (e) {
       toast.error(e.response?.data?.message || 'Failed to load dashboard')
     } finally {
@@ -149,41 +137,6 @@ export function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      {isManager && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Assignment events (SNS pipeline)</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Rows written by the assignment worker Lambda after SNS → SQS.
-            </p>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <Skeleton className="h-16 w-full" />
-            ) : assignmentActivity.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No assignment events yet.</p>
-            ) : (
-              <ul className="space-y-2 text-sm">
-                {assignmentActivity.map((a) => (
-                  <li
-                    key={a.activityId}
-                    className="rounded-md border border-border/60 px-3 py-2"
-                  >
-                    <p className="font-medium">
-                      {a.action || 'assigned'} · {a.assignee || '—'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {a.title || 'Task'} ·{' '}
-                      {a.createdAt ? new Date(a.createdAt).toLocaleString() : '—'}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

@@ -18,18 +18,36 @@ const ACTIVITY_TABLE = process.env.DYNAMODB_ACTIVITY_LOG_TABLE || 'mini-jira-act
 const METRIC_NAMESPACE = process.env.CLOUDWATCH_NAMESPACE || 'MiniJira';
 const EMAIL_USER = process.env.EMAIL_USER || '';
 const EMAIL_PASS = process.env.EMAIL_PASS || '';
+const EMAIL_SMTP_HOST = process.env.EMAIL_SMTP_HOST || 'smtp.gmail.com';
+const EMAIL_SMTP_PORT = Number(process.env.EMAIL_SMTP_PORT || 587);
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }));
 const cw = new CloudWatchClient({ region: REGION });
 
 let mailTransporter;
 
+/** Gmail and Google Workspace (e.g. student.giu-uni.de) use smtp.gmail.com + App Password. */
+function resolveSmtpSettings() {
+  if (process.env.EMAIL_SMTP_HOST) {
+    return { host: EMAIL_SMTP_HOST, port: EMAIL_SMTP_PORT };
+  }
+  if (EMAIL_USER && EMAIL_PASS) {
+    return { host: 'smtp.gmail.com', port: 587 };
+  }
+  return null;
+}
+
 function getMailTransporter() {
   if (!EMAIL_USER || !EMAIL_PASS) return null;
+  const smtp = resolveSmtpSettings();
+  if (!smtp) {
+    console.warn('[email] Cannot send: EMAIL_USER / EMAIL_PASS or EMAIL_SMTP_HOST not configured.');
+    return null;
+  }
   if (!mailTransporter) {
     mailTransporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
+      host: smtp.host,
+      port: smtp.port,
       secure: false,
       requireTLS: true,
       auth: {
@@ -41,13 +59,46 @@ function getMailTransporter() {
   return mailTransporter;
 }
 
+/**
+ * SQS body is usually an SNS notification JSON; Message holds our assignment payload.
+ * Old SNS console tests send plain text ("SNS test message") — skip those safely.
+ */
 function parseAssignmentPayload(sqsBody) {
-  const envelope = JSON.parse(sqsBody);
-  const raw = envelope.Message;
-  if (typeof raw !== 'string' || !raw.trim()) {
-    throw new Error('SNS Message is empty');
+  if (!sqsBody || typeof sqsBody !== 'string') {
+    return null;
   }
-  return JSON.parse(raw);
+
+  let outer;
+  try {
+    outer = JSON.parse(sqsBody);
+  } catch {
+    console.warn('[parse] SQS body is not JSON, skipping:', sqsBody.slice(0, 120));
+    return null;
+  }
+
+  // Rare: payload written directly to the queue without SNS envelope
+  if (outer && typeof outer === 'object' && outer.taskId) {
+    return outer;
+  }
+
+  const raw = outer.Message ?? outer.message;
+  if (typeof raw !== 'string' || !raw.trim()) {
+    console.warn('[parse] SNS envelope has no Message field');
+    return null;
+  }
+
+  const trimmed = raw.trim();
+  if (trimmed === 'SNS test message' || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) {
+    console.warn('[parse] Non-assignment SNS message, skipping:', trimmed.slice(0, 120));
+    return null;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch (err) {
+    console.warn('[parse] Message field is not JSON:', err.message, trimmed.slice(0, 120));
+    return null;
+  }
 }
 
 async function saveActivity(payload) {
@@ -157,14 +208,23 @@ async function sendAssigneeEmail(payload) {
 
 exports.handler = async (event) => {
   const records = event.Records || [];
-  console.log('SQS Event:', JSON.stringify(event, null, 2));
+  console.log(
+    'Assignment worker invoked',
+    JSON.stringify({
+      recordCount: records.length,
+      smtpConfigured: Boolean(EMAIL_USER && EMAIL_PASS),
+      activityTable: ACTIVITY_TABLE,
+    })
+  );
 
   const results = [];
   for (const record of records) {
     try {
       const payload = parseAssignmentPayload(record.body);
-      if (!payload.taskId) {
-        throw new Error('Missing taskId in assignment payload');
+      if (!payload?.taskId) {
+        console.warn('Skipping record: not a task assignment payload');
+        results.push({ ok: false, reason: 'invalid_or_test_payload' });
+        continue;
       }
 
       const activity = await saveActivity(payload);
