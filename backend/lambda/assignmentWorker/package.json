@@ -1,0 +1,16 @@
+{
+  "name": "mini-jira-assignment-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SQS worker: assignment events → activity log + metric + assignee email (Gmail SMTP)",
+  "main": "index.js",
+  "scripts": {
+    "zip": "npm ci --omit=dev && cd .. && rm -f assignmentWorker.zip && zip -r assignmentWorker.zip assignmentWorker/index.js assignmentWorker/node_modules assignmentWorker/package.json"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudwatch": "^3.787.0",
+    "@aws-sdk/client-dynamodb": "^3.787.0",
+    "@aws-sdk/lib-dynamodb": "^3.787.0",
+    "nodemailer": "^6.10.1"
+  }
+}

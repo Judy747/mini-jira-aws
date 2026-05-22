@@ -6,7 +6,7 @@ const sns = new SNSClient({ region: loadEnv().awsRegion });
 
 /**
  * Publishes a task-assignment event to SNS (fire-and-forget).
- * SNS fans out to email + SQS → worker Lambda → activity log + CloudWatch metric.
+ * SNS fans out to SQS → worker Lambda → activity log + CloudWatch metric.
  */
 function publishTaskAssignedEvent({
   taskId,
@@ -16,7 +16,22 @@ function publishTaskAssignedEvent({
   assignedBy,
 }) {
   const topicArn = loadEnv().snsTaskAssignmentTopicArn;
-  if (!topicArn || !assigneeId) return;
+  if (!topicArn) {
+    console.warn(
+      '[assignmentEvents] SNS publish skipped: SNS_TASK_ASSIGNMENT_TOPIC_ARN is not set'
+    );
+    return;
+  }
+  if (!assigneeId) {
+    console.warn('[assignmentEvents] SNS publish skipped: missing assigneeId', { taskId });
+    return;
+  }
+
+  console.log('[assignmentEvents] publishing task assignment to SNS', {
+    taskId,
+    assigneeId,
+    topicArn: topicArn.replace(/:[0-9]{12}:/, ':************:'),
+  });
 
   (async () => {
     let assignee = assigneeId;
@@ -43,15 +58,24 @@ function publishTaskAssignedEvent({
       createdAt: new Date().toISOString(),
     };
 
-    await sns.send(
+    const result = await sns.send(
       new PublishCommand({
         TopicArn: topicArn,
         Subject: `Task assigned: ${title || taskId}`,
         Message: JSON.stringify(payload),
       })
     );
+    console.log('[assignmentEvents] SNS publish succeeded', {
+      taskId,
+      messageId: result.MessageId,
+    });
   })().catch((err) => {
-    console.error('[assignmentEvents] SNS publish failed:', err.message);
+    console.error('[assignmentEvents] SNS publish failed:', {
+      taskId,
+      assigneeId,
+      message: err.message,
+      code: err.name || err.Code,
+    });
   });
 }
 

@@ -54,6 +54,7 @@ Done in the **AWS Console or CLI**, not from this repo:
    /mini-jira/prod/DYNAMODB_COMMENTS_TABLE(String)
    /mini-jira/prod/S3_BUCKET_NAME         (String)
    /mini-jira/prod/S3_PUBLIC_BASE_URL     (String)   # optional, CloudFront URL of attachments
+   /mini-jira/prod/SNS_TASK_ASSIGNMENT_TOPIC_ARN (String)  # e.g. arn:aws:sns:...:mini-jira-task-assignments
    /mini-jira/prod/CORS_ORIGIN            (String)   # fill in AFTER step 3 with the CloudFront URL
    ```
 
@@ -259,7 +260,33 @@ aws ssm start-session --target i-0123456789abcdef0
 
 ---
 
-## 9. Daily digest Lambda (EventBridge + SNS)
+## 9. Task assignment pipeline (SNS → SQS → worker)
+
+See [`infra/assignment-pipeline.yaml`](infra/assignment-pipeline.yaml) and [`backend/lambda/assignmentWorker/`](backend/lambda/assignmentWorker/).
+
+1. Ensure `SNS_TASK_ASSIGNMENT_TOPIC_ARN` is in SSM (same prefix as other params) and in local `backend/.env`.
+2. If the topic/queue/Lambda **already exist** in AWS, refresh worker code and email env:
+
+   ```bash
+   bash backend/scripts/package-assignment-worker.sh
+   aws lambda update-function-code \
+     --function-name mini-jira-assignment-worker \
+     --zip-file fileb://backend/lambda/assignmentWorker.zip
+
+   aws lambda update-function-configuration \
+     --function-name mini-jira-assignment-worker \
+     --environment "Variables={DYNAMODB_ACTIVITY_LOG_TABLE=mini-jira-activity-log,CLOUDWATCH_NAMESPACE=MiniJira,EMAIL_USER=your@gmail.com,EMAIL_PASS=your-gmail-app-password}"
+   ```
+
+   Use a Gmail **App Password** for `EMAIL_PASS`. The worker sends to `assigneeEmail` from each assignment event (Nodemailer → `smtp.gmail.com:587`).
+
+3. Greenfield deploy: package zip → S3 → `aws cloudformation deploy` with `infra/assignment-pipeline.yaml` (see README).
+
+**Smoke test:** manager changes assignee → EC2/journal `[assignmentEvents] SNS publish succeeded` → CloudWatch log group `/aws/lambda/mini-jira-assignment-worker` shows `Saved activity` → `GET /api/activity` returns the row.
+
+---
+
+## 10. Daily digest Lambda (EventBridge + SNS)
 
 Separate stack: [`infra/digest-lambda.yaml`](infra/digest-lambda.yaml). Runs daily at **9:00** in `DigestTimezone` (default `UTC`; use e.g. `Africa/Cairo` for local 9 AM).
 
@@ -291,6 +318,9 @@ Confirm the SNS email subscription, then test: `aws lambda invoke --function-nam
 | Path                              | What it does                                                  |
 | --------------------------------- | ------------------------------------------------------------- |
 | `infra/cloudformation.yaml`       | Full stack: VPC, ALB, ASG, IAM, S3, CloudFront.               |
+| `infra/assignment-pipeline.yaml`  | Assignment SNS, SQS, worker Lambda, subscriptions.            |
+| `infra/dynamodb-activity-log.yaml`| Activity log table for assignment worker.                     |
+| `backend/lambda/assignmentWorker/`| SQS consumer → activity log + `TasksAssignedPerTeam`.        |
 | `infra/digest-lambda.yaml`        | Digest SNS topic, Lambda, EventBridge Scheduler (9 AM).       |
 | `infra/user-data.sh`              | Runs on every EC2 boot; installs deps and starts the backend. |
 | `infra/deploy-frontend.sh` / `.ps1` | Builds the React app and publishes to S3 + invalidates CF.  |
