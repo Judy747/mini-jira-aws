@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-const { PutCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
-=======
 const { PutCommand, QueryCommand, BatchWriteCommand } = require('@aws-sdk/lib-dynamodb');
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 const { docClient } = require('./dynamoClient');
 const { loadEnv } = require('../config/env');
 
@@ -27,9 +23,6 @@ async function listByTask(taskId) {
   return r.Items || [];
 }
 
-<<<<<<< HEAD
-module.exports = { createEntry, listByTask };
-=======
 async function deleteByTask(taskId) {
   const items = await listByTask(taskId);
   if (!items.length) return;
@@ -53,4 +46,3 @@ async function deleteByTask(taskId) {
 }
 
 module.exports = { createEntry, listByTask, deleteByTask };
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
