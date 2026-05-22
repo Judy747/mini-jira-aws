@@ -36,7 +36,7 @@ export function MainLayout() {
             <Check className="h-5 w-5" strokeWidth={3} />
           </div>
           <div>
-            <p className="text-sm font-semibold leading-tight">Mini Jira AWS</p>
+            <p className="text-sm font-semibold leading-tight">Mini Jira</p>
             <p className="text-xs text-muted-foreground">Cloud task management</p>
           </div>
         </div>
