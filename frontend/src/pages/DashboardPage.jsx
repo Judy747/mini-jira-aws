@@ -174,7 +174,7 @@ export function DashboardPage() {
                       {a.action || 'assigned'} · {a.assignee || '—'}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Task {a.taskId?.slice(0, 8)}… · team {a.teamId} ·{' '}
+                      {a.title || 'Task'} ·{' '}
                       {a.createdAt ? new Date(a.createdAt).toLocaleString() : '—'}
                     </p>
                   </li>
@@ -225,7 +225,7 @@ export function DashboardPage() {
                       </td>
                       <td className="py-2 pr-4">{priorityLabel(t.priority)}</td>
                       {isManager && (
-                        <td className="py-2 pr-4 font-mono text-xs text-muted-foreground">{t.teamId}</td>
+                        <td className="py-2 pr-4 text-muted-foreground">{t.teamName || '—'}</td>
                       )}
                       <td className="py-2 text-muted-foreground">
                         {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : '—'}

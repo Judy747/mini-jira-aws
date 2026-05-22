@@ -112,10 +112,9 @@ export function AdminPage() {
                 {teams.map((t) => (
                   <li
                     key={t.teamId}
-                    className="flex items-center justify-between gap-2 rounded-md border border-border/60 px-3 py-2 text-sm"
+                    className="rounded-md border border-border/60 px-3 py-2 text-sm"
                   >
                     <span className="font-medium">{t.name}</span>
-                    <span className="font-mono text-xs text-muted-foreground">{t.teamId}</span>
                   </li>
                 ))}
               </ul>
