@@ -41,9 +41,6 @@ function getMailTransporter() {
   return mailTransporter;
 }
 
-/**
- * SQS body is an SNS notification envelope; Message is our task-assignment JSON.
- */
 function parseAssignmentPayload(sqsBody) {
   const envelope = JSON.parse(sqsBody);
   const raw = envelope.Message;
@@ -116,9 +113,6 @@ Task ID: ${taskId}`;
   return { subject, text };
 }
 
-/**
- * Sends to assigneeEmail from the event. Failures are logged and do not fail the SQS batch.
- */
 async function sendAssigneeEmail(payload) {
   const to = payload.assigneeEmail?.trim();
   if (!to) {
@@ -184,8 +178,9 @@ exports.handler = async (event) => {
         email: emailResult,
       });
     } catch (err) {
-      console.error('Record failed:', err.message, err.stack);
-      throw err;
+      console.error('Record failed, skipping:', err.message, err.stack);
+      results.push({ ok: false, error: err.message });
+      // Do NOT re-throw — lets SQS delete the bad message instead of retrying forever
     }
   }
 
