@@ -26,10 +26,7 @@ export function KanbanPage() {
   const { displayName } = useUsers()
   const [teamFilter, setTeamFilter] = useState('')
   const [modalId, setModalId] = useState(null)
-<<<<<<< HEAD
-=======
   const [taskRefreshSignal, setTaskRefreshSignal] = useState(0)
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
 
   const { tasks, setTasks, loading, reload } = useTasks({
     teamId: isManager && teamFilter ? teamFilter : undefined,
@@ -56,12 +53,8 @@ export function KanbanPage() {
     try {
       await updateTask(draggableId, { status: nextStatus })
       toast.success('Task moved')
-<<<<<<< HEAD
-      reload()
-=======
       await reload()
       setTaskRefreshSignal((n) => n + 1)
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
     } catch (e) {
       setTasks(prev)
       toast.error(e.response?.data?.message || 'Could not update status')
@@ -182,15 +175,11 @@ export function KanbanPage() {
         taskId={modalId}
         open={!!modalId}
         onOpenChange={(o) => !o && setModalId(null)}
-<<<<<<< HEAD
-        onUpdated={reload}
-=======
         onUpdated={async () => {
           await reload()
           setTaskRefreshSignal((n) => n + 1)
         }}
         refreshSignal={taskRefreshSignal}
->>>>>>> bbca33f6f623f9918dc59d6d5462ca10c0792f7c
       />
     </div>
   )
